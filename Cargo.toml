@@ -1,0 +1,33 @@
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "visit"] }
+
+
+[package]
+name = "e-macros"
+version = "0.1.0"
+description = "This is a macro definition that can handle Json and C data"
+authors = [
+  "Eternal Night <EternalNight996@gmail.com, EternalNightYeah2@yeah.net>",
+]
+edition = "2021"
+rust-version = "1.76.0"
+homepage = "https://gitee.com/eternalnight996"
+license = "MIT"
+license-file = "MIT-LICENSE"
+readme = "README.md"
+documentation = "https://docs.rs/e-macros"
+repository = "https://gitee.com/eternalnight996/e-macros"
+include = ["src/", "*.md", "*-LICENSE", "Cargo.toml"]
+keywords = ["macros", "json", "c", "c++","e-"]
+categories = ["development-tools::procedural-macro-helpers"]
+
+[package.metadata.docs.rs]
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
+rustdoc-args = ["--cfg", "doc_cfg"]
+all-features = true
