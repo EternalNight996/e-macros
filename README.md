@@ -1,5 +1,5 @@
 
-<img src="public/ico/white_64x64.ico" alt="e-macros">
+<img src="public/ico/white_64x64.ico" alt="e-macros"/>
 
 ### 📄 [中文](docs/README.zh.md)  | 📄  [English](README.md)
 
@@ -126,6 +126,7 @@ fn test() -> Result<()> {
   Ok(())
 }
 ```
+
 ## `💡!important：`
 <!-- ####There are three requirements for building on the windows system environment:
 
