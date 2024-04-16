@@ -1,5 +1,5 @@
 
-<center><img src="public/ico/white_64x64.ico" alt="e-log"></center>
+<img src="public/ico/white_64x64.ico" alt="e-macros">
 
 ### 📄 [中文](docs/README.zh.md)  | 📄  [English](README.md)
 
