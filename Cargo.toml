@@ -10,7 +10,7 @@ syn = { version = "2.0", features = ["full", "visit"] }
 
 [package]
 name = "e-macros"
-version = "0.1.4"
+version = "0.1.5"
 description = "This is a macro definition that can handle Json and C data"
 authors = [
   "Eternal Night <EternalNight996@gmail.com, EternalNightYeah2@yeah.net>",
@@ -22,7 +22,7 @@ license-file = "MIT-LICENSE"
 readme = "README.md"
 documentation = "https://docs.rs/e-macros"
 repository = "https://gitee.com/eternalnight996/e-macros"
-include = ["src/", "*.md", "*-LICENSE", "Cargo.toml","docs","public"]
+include = ["src/", "*.md", "*-LICENSE", "Cargo.toml"]
 keywords = ["macros", "json", "c", "c++","e-"]
 categories = ["development-tools::procedural-macro-helpers"]
 
