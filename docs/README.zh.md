@@ -1,7 +1,7 @@
 <p align="center">
   <img src="public/ico/white_64x64.ico" alt="e-macros"><br>
-  <a href="#Install">Install</a> •
-  <a href="#Doc">Doc</a> •
+  <a href="#安装">安装</a> •
+  <a href="#文档">文档</a> •
   [<a href="README.zh.md">中文</a>] [<a href="README.en.md">English</a>]<br>
   <b>We need your help to translate this README, <a href="https://gitee.com/EternalNight996">Author Gitee</a> <a href="https://github.com/EternalNight996">Author Github</a> to your native language</b>
 </p>
@@ -10,8 +10,8 @@
 
 [![ko-fi](public/ico/white_64x64.ico)](https://gitee.com/EternalNight996)
 
-#### Install
+#### 安装
 ```
 ```
 
-#### Doc
+#### 文档

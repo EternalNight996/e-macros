@@ -18,7 +18,6 @@ authors = [
 edition = "2021"
 rust-version = "1.76.0"
 homepage = "https://gitee.com/eternalnight996"
-license = "MIT"
 license-file = "MIT-LICENSE"
 readme = "README.md"
 documentation = "https://docs.rs/e-macros"
