@@ -292,10 +292,12 @@ pub fn c_derive(input: TokenStream) -> TokenStream {
   let expanded = quote! {
     // Implement the trait for the struct
     impl #struct_name {
-      // /// 获取*const c_void指针
-      // pub fn to_c_ptr2(self) -> *const std::ffi::c_void {
-      //   self as *const Self *const std::ffi::c_void
-      // }
+      /// # 获取*const c_void指针
+      /// ```rust
+      /// pub fn to_c_ptr2(self) -> *const std::ffi::c_void {
+      ///   self as *const Self *const std::ffi::c_void
+      /// }
+      /// ```
       /// 安全地获取*const c_void指针
       pub fn to_c_ptr(self) -> *const std::ffi::c_void {
         Box::into_raw(Box::new(self)) as *const std::ffi::c_void
@@ -336,11 +338,13 @@ pub fn c_derive(input: TokenStream) -> TokenStream {
       pub unsafe fn from_c_ptr2(void_ptr: *const std::ffi::c_void) -> Self {
         std::ptr::read(void_ptr as *const Self)
       }
-      // /// 安全地获取*mut c_void指针
-      // pub fn to_c_mut_ptr(self) -> *mut std::ffi::c_void {
-      //   Box::into_raw(Box::new(self)) as *mut std::ffi::c_void
-      // }
-      // 安全地还原*mut c_void指针为Box<Self>
+      /// # 安全地获取*mut c_void指针
+      /// ```rust
+      /// pub fn to_c_mut_ptr(self) -> *mut std::ffi::c_void {
+      ///   Box::into_raw(Box::new(self)) as *mut std::ffi::c_void
+      /// }
+      /// ```
+      /// 安全地还原*mut c_void指针为Box<Self>
       pub unsafe fn from_c_mut_ptr(void_ptr: *mut c_void) -> Option<Box<Self>> {
         // 使用NonNull来避免空指针
         let non_null_ptr = std::ptr::NonNull::new(void_ptr as *mut Self);
