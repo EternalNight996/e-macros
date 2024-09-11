@@ -1,83 +1,123 @@
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
-    use std::str::FromStr;
+    use std::str::FromStr as _;
 
-    use e_macros::Enum;
-
-    // Ensure TestEnum is defined only once
-    #[derive(Enum, Clone, Copy, Debug, PartialEq)]
+    #[derive(e_macros::Enum, Debug, Clone, Copy, Default)]
     pub enum TestEnum {
-        #[descript("测试1")]
+        #[ename("测试1")]
         Variant1,
-        #[descript("测试2")]
+        #[ename("测试2")]
         Variant2,
         Variant3,
-        #[descript()]
+        #[default]
         Variant4,
     }
 
     #[test]
-    fn test_as_str() {
-        // assert_eq!(TestEnum::Variant1.as_str(), "Variant1");
-        // assert_eq!(TestEnum::Variant2.as_str(), "Variant2");
-        // assert_eq!(TestEnum::Variant3.as_str(), "Variant3");
-    }
+    fn test_enum_functionality() {
+        let variants = [
+            (TestEnum::Variant1, "测试1", 0),
+            (TestEnum::Variant2, "测试2", 1),
+            (TestEnum::Variant3, "Variant3", 2),
+            (TestEnum::Variant4, "Variant4", 3),
+        ];
 
-    #[test]
-    fn test_from_str() {
-        assert_eq!(TestEnum::from_str("Variant1").unwrap(), TestEnum::Variant1);
-        assert_eq!(TestEnum::from_str("Variant2").unwrap(), TestEnum::Variant2);
-        assert_eq!(TestEnum::from_str("Variant3").unwrap(), TestEnum::Variant3);
+        for (variant, name, index) in variants.iter() {
+            // Test as_str
+            assert_eq!(variant.as_str(), *name);
+
+            // Test Display
+            assert_eq!(format!("{}", variant), *name);
+
+            // Test FromStr
+            assert_eq!(TestEnum::from_str(name).unwrap(), *variant);
+
+            // Test TryFrom<i32>
+            assert_eq!(TestEnum::try_from(*index).unwrap(), *variant);
+
+            // Test Into<i32>
+            assert_eq!(Into::<i32>::into(*variant), *index);
+
+            // Test TryFrom<&str>
+            assert_eq!(TestEnum::from_str(*name as &str).unwrap(), *variant);
+        }
+
+        // Test invalid cases
         assert!(TestEnum::from_str("Invalid").is_err());
+        assert!(TestEnum::try_from(100).is_err());
+        assert!(TestEnum::from_str("Invalid" as &str).is_err());
     }
 
     #[test]
-    fn test_try_from_i32() {
-        // assert_eq!(TestEnum::try_from(0).unwrap(), TestEnum::Variant1);
-        // assert_eq!(TestEnum::try_from(1).unwrap(), TestEnum::Variant2);
-        // assert_eq!(TestEnum::try_from(2).unwrap(), TestEnum::Variant3);
-        // assert!(TestEnum::try_from(100).is_err());
+    fn test_default() {
+        assert_eq!(TestEnum::default(), TestEnum::Variant4);
     }
 
     #[test]
-    fn test_into_i32() {
-        // let v1: i32 = TestEnum::Variant1.into();
-        // let v2: i32 = TestEnum::Variant2.into();
-        // let v3: i32 = TestEnum::Variant3.into();
-        // assert_eq!(v1, 0);
-        // assert_eq!(v2, 1);
-        // assert_eq!(v3, 2);
+    fn test_variants() {
+        assert_eq!(TestEnum::ALL.len(), 4);
+        assert_eq!(
+            TestEnum::ALL,
+            [
+                TestEnum::Variant1,
+                TestEnum::Variant2,
+                TestEnum::Variant3,
+                TestEnum::Variant4
+            ]
+        );
     }
 
     #[test]
-    fn test_display() {
-        // assert_eq!(format!("{}", TestEnum::Variant1), "Variant1");
-        // assert_eq!(format!("{}", TestEnum::Variant2), "Variant2");
-        // assert_eq!(format!("{}", TestEnum::Variant3), "Variant3");
+    fn test_from_i32() {
+        assert_eq!(TestEnum::try_from(0).unwrap(), TestEnum::Variant1);
+        assert_eq!(TestEnum::try_from(1).unwrap(), TestEnum::Variant2);
+        assert_eq!(TestEnum::try_from(2).unwrap(), TestEnum::Variant3);
+        assert_eq!(TestEnum::try_from(3).unwrap(), TestEnum::Variant4);
+        assert_eq!(
+            TestEnum::try_from(100).unwrap_or_default(),
+            TestEnum::default()
+        );
     }
 
-    // #[test]
-    // fn test_to_descript() {
-    //     assert_eq!(TestEnum::Variant1.to_descript(), "测试1");
-    //     assert_eq!(TestEnum::Variant2.to_descript(), "测试2");
-    //     assert_eq!(TestEnum::Variant3.to_descript(), "测试3");
-    // }
+    #[test]
+    fn test_try_from_str() {
+        assert_eq!(TestEnum::try_from("测试1").unwrap(), TestEnum::Variant1);
+        assert_eq!(TestEnum::try_from("Variant1").unwrap(), TestEnum::Variant1);
+        assert_eq!(TestEnum::try_from("测试2").unwrap(), TestEnum::Variant2);
+        assert_eq!(TestEnum::try_from("Variant2").unwrap(), TestEnum::Variant2);
+        assert_eq!(TestEnum::try_from("Variant3").unwrap(), TestEnum::Variant3);
+        assert_eq!(TestEnum::try_from("Variant4").unwrap(), TestEnum::Variant4);
+        assert!(TestEnum::try_from("Invalid").is_err());
+    }
 
-    // #[test]
-    // fn test_from_descript() {
-    //     assert_eq!(
-    //         TestEnum::from_descript("测试1").unwrap(),
-    //         TestEnum::Variant1
-    //     );
-    //     assert_eq!(
-    //         TestEnum::from_descript("测试2").unwrap(),
-    //         TestEnum::Variant2
-    //     );
-    //     assert_eq!(
-    //         TestEnum::from_descript("测试3").unwrap(),
-    //         TestEnum::Variant3
-    //     );
-    //     assert!(TestEnum::from_descript("Invalid").is_err());
-    // }
+    #[cfg(feature = "serde")]
+    mod serde_tests {
+        use super::*;
+        use serde_json;
+
+        #[test]
+        fn test_serde() {
+            let variants = [
+                (TestEnum::Variant1, "测试1", "\"测试1\""),
+                (TestEnum::Variant2, "测试2", "\"测试2\""),
+                (TestEnum::Variant3, "Variant3", "\"Variant3\""),
+                (TestEnum::Variant4, "Variant4", "\"Variant4\""),
+            ];
+
+            for (variant, name, json) in variants.iter() {
+                // Test serialization
+                assert_eq!(serde_json::to_string(variant).unwrap(), *json);
+                // Test deserialization
+                assert_eq!(serde_json::from_str::<TestEnum>(json).unwrap(), *variant);
+                // Err
+                assert!(serde_json::from_str::<TestEnum>(name).is_err());
+            }
+
+            // Test invalid cases
+            assert!(serde_json::from_str::<TestEnum>("\"Invalid\"").is_err());
+            assert!(serde_json::from_str::<TestEnum>("42").is_err());
+            assert!(serde_json::from_str::<TestEnum>("null").is_err());
+        }
+    }
 }

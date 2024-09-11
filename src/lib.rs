@@ -25,10 +25,11 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Expr, MetaList};
+use syn::{parse_macro_input, Data, DeriveInput};
 
-#[proc_macro_derive(Enum, attributes(descript, display))]
+#[proc_macro_derive(Enum, attributes(ename))]
 pub fn derive_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
@@ -36,54 +37,45 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
         data_enum
             .variants
             .iter()
-            .map(|v| {
+            .enumerate()
+            .map(|(index, v)| {
                 let ident = &v.ident;
-                let discriminant = if let Some((_, expr)) = &v.discriminant {
-                    quote! { = #expr }
-                } else {
-                    quote! {}
-                };
-
-                let mut description = stringify!(#ident).to_string();
-                for attr in &v.attrs {
-                    let path = attr.path();
-                    if path.is_ident("descript") {
-                        if let Ok(tokens) = attr.parse_args_with(|input: syn::parse::ParseStream| {
-                            let meta_list: MetaList = input.parse()?;
-                            let tokens = meta_list.tokens.to_string();
-                            println!("descript -> {:?}  ", tokens);
-                            Ok(tokens)
-                        }) {
-                            description = tokens;
-                        } else {
-                            eprintln!("Failed to parse 'descript' attribute for variant {:?}", ident);
-                        }
-                    } else if path.is_ident("display") {
-                        //
+                let mut description = ident.to_string();
+                if let Some(attr) = v.attrs.iter().find(|a| a.path().is_ident("ename")) {
+                    if let Ok(lit) = attr.parse_args::<syn::LitStr>() {
+                        description = lit.value();
                     }
                 }
-                (ident, discriminant, description)
+                (ident, index as i32, description)
             })
             .collect::<Vec<_>>()
     } else {
         panic!("Enum derive macro can only be used with enums");
     };
-    let variant_idents = variants.iter().map(|(ident, _, _)| ident);
-    let variant_descriptions = variants.iter().map(|(_, _, description)| description);
 
+    let variant_idents: Vec<_> = variants.iter().map(|(ident, _, _)| ident).collect();
+    let variant_indices: Vec<_> = variants.iter().map(|(_, index, _)| index).collect();
+    let variant_name: Vec<_> = variants
+        .iter()
+        .map(|(ident, _, desc)| {
+            if desc.is_empty() {
+                quote! { stringify!(#ident) }
+            } else {
+                quote! { #desc }
+            }
+        })
+        .collect();
+    let variant_count = variants.len();
+    let serde_impl = generate_serde_impl(name);
     let expanded = quote! {
         impl #name {
-            // pub fn as_str(&self) -> &'static str {
-            //     match self {
-            //         #(Self::#variant_idents => stringify!(#variant_idents),)*
-            //     }
-            // }
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    #(Self::#variant_idents => #variant_name,)*
+                }
+            }
 
-            // pub fn to_descript(&self) -> &'static str {
-            //     match self {
-            //         #(Self::#variant_idents => #variant_descriptions,)*
-            //     }
-            // }
+            pub const ALL: [Self; #variant_count] = [#(Self::#variant_idents),*];
         }
 
         impl std::str::FromStr for #name {
@@ -91,50 +83,78 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 match s {
-                    #(stringify!(#variant_idents) => Ok(Self::#variant_idents),)*
+                    #(#variant_name | stringify!(#variant_idents) => Ok(Self::#variant_idents),)*
+                    _ => Err(format!("Invalid string: {}", s)),
+                }
+            }
+        }
+        impl TryFrom<&str> for #name {
+            type Error = String;
+
+            fn try_from(s: &str) -> Result<Self, Self::Error> {
+                match s {
+                    #(#variant_name | stringify!(#variant_idents) => Ok(Self::#variant_idents),)*
                     _ => Err(format!("Invalid string: {}", s)),
                 }
             }
         }
 
-        // impl TryFrom<i32> for #name {
-        //     type Error = String;
+        impl TryFrom<i32> for #name {
+            type Error = String;
 
-        //     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        //         match value {
-        //             #(i if i == Self::#variant_idents as i32 => Ok(Self::#variant_idents),)*
-        //             _ => Err(format!("Invalid integer: {}", value)),
-        //         }
-        //     }
-        // }
+            fn try_from(value: i32) -> Result<Self, Self::Error> {
+                match value {
+                    #(#variant_indices => Ok(Self::#variant_idents),)*
+                    _ => Err(format!("Invalid integer: {}", value)),
+                }
+            }
+        }
 
-        // impl From<#name> for i32 {
-        //     fn from(value: #name) -> Self {
-        //         value as i32
-        //     }
-        // }
+        impl From<#name> for i32 {
+            fn from(value: #name) -> Self {
+                value as i32
+            }
+        }
 
-        // impl std::fmt::Display for #name {
-        //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //         write!(f, "{}", self.as_str())
-        //     }
-        // }
+        impl std::fmt::Display for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
 
-        // impl PartialEq for #name {
-        //     fn eq(&self, other: &Self) -> bool {
-        //         *self as i32 == *other as i32
-        //     }
-        // }
+        impl PartialEq for #name {
+            fn eq(&self, other: &Self) -> bool {
+                std::mem::discriminant(self) == std::mem::discriminant(other)
+            }
+        }
 
-        // impl #name {
-        //     pub fn from_descript(desc: &str) -> Result<Self, String> {
-        //         match desc {
-        //             #(#variant_descriptions => Ok(Self::#variant_idents),)*
-        //             _ => Err(format!("Invalid description: {}", desc)),
-        //         }
-        //     }
-        // }
+        #serde_impl
     };
 
     TokenStream::from(expanded)
+}
+
+fn generate_serde_impl(name: &syn::Ident) -> TokenStream2 {
+    quote! {
+        #[cfg(feature = "serde")]
+        impl serde::Serialize for #name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> serde::Deserialize<'de> for #name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let s = String::deserialize(deserializer)?;
+                s.parse::<Self>().map_err(serde::de::Error::custom)
+            }
+        }
+    }
 }
