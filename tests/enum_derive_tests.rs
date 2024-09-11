@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn test_variants() {
-        assert_eq!(TestEnum::ALL.len(), 4);
+        assert_eq!(TestEnum::COUNT, 4);
         assert_eq!(
             TestEnum::ALL,
             [

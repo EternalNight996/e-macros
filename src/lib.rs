@@ -27,7 +27,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
 #[proc_macro_derive(Enum, attributes(ename))]
 pub fn derive_enum(input: TokenStream) -> TokenStream {
@@ -46,56 +46,44 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
                         description = lit.value();
                     }
                 }
-                (ident, index as i32, description)
+                (ident, index as i32, description, &v.fields)
             })
             .collect::<Vec<_>>()
     } else {
         panic!("Enum derive macro can only be used with enums");
     };
-
-    let variant_idents: Vec<_> = variants.iter().map(|(ident, _, _)| ident).collect();
-    let variant_indices: Vec<_> = variants.iter().map(|(_, index, _)| index).collect();
-    let variant_name: Vec<_> = variants
-        .iter()
-        .map(|(ident, _, desc)| {
-            if desc.is_empty() {
-                quote! { stringify!(#ident) }
-            } else {
-                quote! { #desc }
-            }
-        })
-        .collect();
-    let variant_count = variants.len();
     let serde_impl = generate_serde_impl(name);
+    let as_str_impl = generate_as_str_impl(&variants);
+    let from_str_impl = generate_from_str_impl(&variants);
+    let try_from_str_impl = generate_try_from_str_impl(&variants);
+    let try_from_i32_impl = generate_try_from_i32_impl(&variants);
+    let to_index_impl = generate_to_index_impl(&variants);
+    let all_variants_impl = generate_all_variants_impl(&variants);
+    let variant_count = variants.len();
     let expanded = quote! {
         impl #name {
             pub fn as_str(&self) -> &'static str {
-                match self {
-                    #(Self::#variant_idents => #variant_name,)*
-                }
+                #as_str_impl
             }
-
-            pub const ALL: [Self; #variant_count] = [#(Self::#variant_idents),*];
+            pub fn to_index(&self) -> i32 {
+                #to_index_impl
+            }
+            pub const ALL:&'static[Self] = #all_variants_impl;
+            pub const COUNT:usize = #variant_count;
         }
 
         impl std::str::FromStr for #name {
             type Err = String;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    #(#variant_name | stringify!(#variant_idents) => Ok(Self::#variant_idents),)*
-                    _ => Err(format!("Invalid string: {}", s)),
-                }
+                #from_str_impl
             }
         }
         impl TryFrom<&str> for #name {
             type Error = String;
 
             fn try_from(s: &str) -> Result<Self, Self::Error> {
-                match s {
-                    #(#variant_name | stringify!(#variant_idents) => Ok(Self::#variant_idents),)*
-                    _ => Err(format!("Invalid string: {}", s)),
-                }
+                #try_from_str_impl
             }
         }
 
@@ -103,16 +91,13 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
             type Error = String;
 
             fn try_from(value: i32) -> Result<Self, Self::Error> {
-                match value {
-                    #(#variant_indices => Ok(Self::#variant_idents),)*
-                    _ => Err(format!("Invalid integer: {}", value)),
-                }
+                #try_from_i32_impl
             }
         }
 
         impl From<#name> for i32 {
             fn from(value: #name) -> Self {
-                value as i32
+                value.to_index()
             }
         }
 
@@ -156,5 +141,100 @@ fn generate_serde_impl(name: &syn::Ident) -> TokenStream2 {
                 s.parse::<Self>().map_err(serde::de::Error::custom)
             }
         }
+    }
+}
+
+fn generate_as_str_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants
+        .iter()
+        .map(|(ident, _, desc, fields)| match fields {
+            Fields::Unit => quote! { Self::#ident => #desc, },
+            Fields::Unnamed(_) => quote! { Self::#ident(..) => #desc, },
+            Fields::Named(_) => quote! { Self::#ident { .. } => #desc, },
+        });
+
+    quote! {
+        match self {
+            #(#match_arms)*
+        }
+    }
+}
+
+fn generate_from_str_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants.iter().map(|(ident, _, desc, fields)| {
+        match fields {
+            Fields::Unit => quote! { #desc | stringify!(#ident) => Ok(Self::#ident), },
+            _ => quote! { #desc | stringify!(#ident) => Err(format!("Cannot construct {} from string", #desc)), },
+        }
+    });
+
+    quote! {
+        match s {
+            #(#match_arms)*
+            _ => Err(format!("Invalid string: {}", s)),
+        }
+    }
+}
+
+fn generate_try_from_str_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants.iter().map(|(ident, _, desc, fields)| {
+        match fields {
+            Fields::Unit => quote! { #desc | stringify!(#ident) => Ok(Self::#ident), },
+            _ => quote! { #desc | stringify!(#ident) => Err(format!("Cannot construct {} from string", #desc)), },
+        }
+    });
+
+    quote! {
+        match s {
+            #(#match_arms)*
+            _ => Err(format!("Invalid string: {}", s)),
+        }
+    }
+}
+
+fn generate_try_from_i32_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants.iter().map(|(ident, index, _, fields)| {
+        match fields {
+            Fields::Unit => quote! { #index => Ok(Self::#ident), },
+            _ => quote! { #index => Err(format!("Cannot construct {} from i32", stringify!(#ident))), },
+        }
+    });
+
+    quote! {
+        match value {
+            #(#match_arms)*
+            _ => Err(format!("Invalid integer: {}", value)),
+        }
+    }
+}
+
+fn generate_to_index_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants
+        .iter()
+        .map(|(ident, index, _, fields)| match fields {
+            Fields::Unit => quote! { Self::#ident => #index, },
+            Fields::Unnamed(f) => {
+                let wildcards = std::iter::repeat(quote!(_)).take(f.unnamed.len());
+                quote! { Self::#ident(#(#wildcards),*) => #index, }
+            }
+            Fields::Named(_) => quote! { Self::#ident { .. } => #index, },
+        });
+
+    quote! {
+        match self {
+            #(#match_arms)*
+        }
+    }
+}
+fn generate_all_variants_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let variant_arms = variants.iter().map(|(ident, _, _, fields)| match fields {
+        Fields::Unit => quote! { Self::#ident, },
+        Fields::Unnamed(_) | Fields::Named(_) => quote! {},
+    });
+
+    quote! {
+        &[
+            #(#variant_arms)*
+        ]
     }
 }

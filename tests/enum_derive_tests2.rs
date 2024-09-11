@@ -1,87 +1,112 @@
-// #[derive(e_macros::Enum, Debug, Clone, Default)]
-// pub enum TestEnum {
-//     #[default]
-//     V1,
-//     V2(String),
-//     // V3(bool, f64),
-//     // V4 {
-//     //     x: u8,
-//     //     y: u8,
-//     // },
-// }
-// use std::convert::TryFrom;
-// use std::str::FromStr;
+use e_macros::Enum;
+use serde::{Deserialize, Serialize};
 
-// #[test]
-// fn test_enum_functionality() {
-//     let variants = [
-//         (TestEnum::V1(42), "测试1", 0),
-//         (TestEnum::V2("Hello".to_string()), "测试2", 1),
-//         (TestEnum::V3(true, 3.14), "V3", 2),
-//         (TestEnum::V4 { x: 1, y: 2 }, "V4", 3),
-//     ];
+#[derive(Enum, Debug, Clone, Serialize, Deserialize)]
+pub enum TestEnumData {
+    V1,
+    V2(String),
+    V3(bool, f64),
+    V4 { x: u8, y: u8 },
+    V5(serde_json::Value),
+}
 
-//     for (variant, name, index) in variants.iter() {
-//         // 测试 as_str
-//         assert_eq!(variant.as_str(), *name);
+#[derive(Enum, Debug, Clone, Serialize, Deserialize)]
+pub enum TestEnum {
+    #[ename("上层")]
+    Up,
+    #[ename("下层")]
+    Down,
+    Data {
+        data: TestEnumData,
+    },
+    Next(Box<TestEnum>),
+}
 
-//         // 测试 Display
-//         assert_eq!(format!("{}", variant), *name);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{from_str, json, to_string};
 
-//         // 测试 TryFrom<i32>
-//         assert_eq!(TestEnum::try_from(*index).unwrap().as_str(), *name);
+    #[test]
+    fn test_test_enum_data() {
+        let v1 = TestEnumData::V1;
+        let v2 = TestEnumData::V2("测试".to_string());
+        let v3 = TestEnumData::V3(true, 3.14);
+        let v4 = TestEnumData::V4 { x: 1, y: 2 };
+        let v5 = TestEnumData::V5(json!({"key": "value"}));
 
-//         // 测试 Into<i32>
-//         assert_eq!(Into::<i32>::into(variant.clone()), *index);
-//     }
+        assert_eq!(format!("{:?}", v1), "V1");
+        assert_eq!(format!("{:?}", v2), "V2(\"测试\")");
+        assert_eq!(format!("{:?}", v3), "V3(true, 3.14)");
+        assert_eq!(format!("{:?}", v4), "V4 { x: 1, y: 2 }");
+        assert_eq!(
+            format!("{:?}", v5),
+            "V5(Object {\"key\": String(\"value\")})"
+        );
+    }
 
-//     // 测试 FromStr 和 TryFrom<&str> 的特定情况
-//     assert_eq!(TestEnum::from_str("测试1").unwrap().as_str(), "测试1");
-//     assert_eq!(TestEnum::try_from("测试2").unwrap().as_str(), "测试2");
+    #[test]
+    fn test_test_enum() {
+        let up = TestEnum::Up;
+        let down = TestEnum::Down;
+        let data = TestEnum::Data {
+            data: TestEnumData::V1,
+        };
+        let next = TestEnum::Next(Box::new(TestEnum::Up));
 
-//     // 测试无效情况
-//     assert!(TestEnum::from_str("Invalid").is_err());
-//     assert!(TestEnum::try_from(100).is_err());
-// }
+        assert_eq!(up.as_str(), "上层");
+        assert_eq!(down.as_str(), "下层");
+        assert_eq!(format!("{:?}", data), "Data { data: V1 }");
+        assert_eq!(format!("{:?}", next), "Next(Up)");
+    }
 
-// #[test]
-// fn test_default() {
-//     assert_eq!(TestEnum::default().as_str(), "V4");
-// }
+    #[test]
+    fn test_enum_clone() {
+        let original = TestEnum::Data {
+            data: TestEnumData::V2("克隆测试".to_string()),
+        };
+        let cloned = original.clone();
 
-// #[test]
-// fn test_variants() {
-//     assert_eq!(TestEnum::ALL.len(), 4);
-//     assert_eq!(
-//         TestEnum::ALL.iter().map(|v| v.as_str()).collect::<Vec<_>>(),
-//         vec!["测试1", "测试2", "V3", "V4"]
-//     );
-// }
+        assert_eq!(format!("{:?}", original), format!("{:?}", cloned));
+    }
 
-// #[cfg(feature = "serde")]
-// mod serde_tests {
-//     use super::*;
-//     use serde_json;
+    #[test]
+    fn test_serialization_deserialization() {
+        // 创建一个复杂的 TestEnum 实例
+        let original = TestEnum::Next(Box::new(TestEnum::Data {
+            data: TestEnumData::V5(json!({
+                "name": "张三",
+                "age": 30,
+                "hobbies": ["读书", "旅游"]
+            })),
+        }));
 
-//     #[test]
-//     fn test_serde() {
-//         let variants = [
-//             (TestEnum::V1(42), "\"测试1\""),
-//             (TestEnum::V2("Hello".to_string()), "\"测试2\""),
-//             (TestEnum::V3(true, 3.14), "\"V3\""),
-//             (TestEnum::V4 { x: 1, y: 2 }, "\"V4\""),
-//         ];
+        // 序列化
+        let serialized = to_string(&original).expect("序列化失败");
+        println!("序列化结果: {}", serialized);
 
-//         for (variant, json) in variants.iter() {
-//             // 测试序列化
-//             assert_eq!(serde_json::to_string(variant).unwrap(), *json);
-//             // 测试反序列化
-//             assert_eq!(serde_json::from_str::<TestEnum>(json).unwrap().as_str(), variant.as_str());
-//         }
+        // 反序列化
+        let deserialized: TestEnum = from_str(&serialized).expect("反序列化失败");
 
-//         // 测试无效情况
-//         assert!(serde_json::from_str::<TestEnum>("\"Invalid\"").is_err());
-//         assert!(serde_json::from_str::<TestEnum>("42").is_err());
-//         assert!(serde_json::from_str::<TestEnum>("null").is_err());
-//     }
-// }
+        // 验证反序列化后的结果是否与原始数据相同
+        assert_eq!(format!("{:?}", original), format!("{:?}", deserialized));
+
+        // 测试 ename 方法是否正常工作
+        if let TestEnum::Next(boxed) = deserialized {
+            if let TestEnum::Data { data } = *boxed {
+                if let TestEnumData::V5(value) = data {
+                    assert_eq!(value["name"], "张三");
+                    assert_eq!(value["age"], 30);
+                    assert_eq!(value["hobbies"][0], "读书");
+                    assert_eq!(value["hobbies"][1], "旅游");
+                } else {
+                    panic!("反序列化后的数据结构不正确");
+                }
+            } else {
+                panic!("反序列化后的数据结构不正确");
+            }
+        } else {
+            panic!("反序列化后的数据结构不正确");
+        }
+    }
+}
