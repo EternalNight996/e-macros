@@ -7,6 +7,8 @@ proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "visit"] }
 
+[dev-dependencies]
+trybuild = "1.0"
 
 [package]
 name = "e-macros"
@@ -23,7 +25,7 @@ readme = "README.md"
 documentation = "https://docs.rs/e-macros"
 repository = "https://gitee.com/eternalnight996/e-macros"
 include = ["src/", "*.md", "*-LICENSE", "Cargo.toml"]
-keywords = ["macros", "json", "c", "c++","e-"]
+keywords = ["macros", "json", "c", "c++", "e-"]
 categories = ["development-tools::procedural-macro-helpers"]
 
 [package.metadata.docs.rs]
