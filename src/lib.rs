@@ -59,39 +59,39 @@ mod r#enum {
     use syn::{parse_quote, Variant};
 
     use crate::repr_derive;
-    fn self_rebuild(slf: syn::ItemEnum) -> syn::Result<TokenStream2> {
-        let mut token_stream = TokenStream2::new();
-        let slf_clone = slf.clone();
-        let vis = slf.vis;
-        let enum_name = slf.ident;
-        let (reprs, derives, derive_debug, derive_default) = repr_derive(&slf.attrs)?;
+    // fn self_rebuild(slf: syn::ItemEnum) -> syn::Result<TokenStream2> {
+    //     let mut token_stream = TokenStream2::new();
+    //     let slf_clone = slf.clone();
+    //     let vis = slf.vis;
+    //     let enum_name = slf.ident;
+    //     let (reprs, derives, derive_debug, derive_default) = repr_derive(&slf.attrs)?;
 
-        let (variant_values, default_value, value_strings) = variants(slf.variants)?;
+    //     let (variant_values, default_value, value_strings) = variants(slf.variants)?;
 
-        let (repr_ty, reprs) = repr_ty(reprs)?;
+    //     let (repr_ty, reprs) = repr_ty(reprs)?;
 
-        let struct_item = structify_type(&reprs, &derives, &vis, &enum_name, &repr_ty);
-        let inherent_impl = inherent_impl(&enum_name, &variant_values, &value_strings, &repr_ty);
-        // let from_impl = from_impl(&enum_name, &repr_ty);
-        // let phantom_enum = phantom_enum(slf_clone);
+    //     let struct_item = structify_type(&reprs, &derives, &vis, &enum_name, &repr_ty);
+    //     let inherent_impl = inherent_impl(&enum_name, &variant_values, &value_strings, &repr_ty);
+    //     // let from_impl = from_impl(&enum_name, &repr_ty);
+    //     // let phantom_enum = phantom_enum(slf_clone);
 
-        struct_item.to_tokens(&mut token_stream);
-        inherent_impl.to_tokens(&mut token_stream);
-        // from_impl.to_tokens(&mut token_stream);
-        // phantom_enum.to_tokens(&mut token_stream);
+    //     struct_item.to_tokens(&mut token_stream);
+    //     inherent_impl.to_tokens(&mut token_stream);
+    //     // from_impl.to_tokens(&mut token_stream);
+    //     // phantom_enum.to_tokens(&mut token_stream);
 
-        if derive_debug {
-            // let debug_impl = debug_impl(&enum_name, &variant_values);
-            // debug_impl.to_tokens(&mut token_stream);
-        }
+    //     if derive_debug {
+    //         // let debug_impl = debug_impl(&enum_name, &variant_values);
+    //         // debug_impl.to_tokens(&mut token_stream);
+    //     }
 
-        if derive_default {
-            // let default_impl = default_impl(&enum_name, &default_value);
-            // default_impl.to_tokens(&mut token_stream);
-        }
+    //     if derive_default {
+    //         // let default_impl = default_impl(&enum_name, &default_value);
+    //         // default_impl.to_tokens(&mut token_stream);
+    //     }
 
-        Ok(token_stream)
-    }
+    //     Ok(token_stream)
+    // }
     pub(crate) fn variant_drives_impl(
         enum_name: &syn::Ident,
         variants: &mut syn::punctuated::Punctuated<Variant, syn::token::Comma>,
