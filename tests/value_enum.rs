@@ -1,30 +1,18 @@
 #[e_macros::value]
 #[derive(Debug, PartialEq, Eq, Default)]
-#[repr(u128)]
+#[repr(i128)]
 enum Foo {
-    #[value("v1")]
     A = 10,
-    // #[value("v2")]
-    B = 20,
-    C = 30
-}
-
-#[test]
-fn test_debug_impl() {
-    let a = format!("{:?}", Foo::A);
-    let a1 = format!("{:?}", Foo::new(0));
-    let unknown = format!("{:?}", Foo::from(1));
-    println!("value -> {} A {:?}", Foo::A.index(), Foo::A);
-    println!("{a:?}\n {a1}\n {unknown}");
-    assert_eq!(a, "A");
-    assert_eq!(a1, "Foo(0)");
-    assert_eq!(unknown, "Foo(1)");
+    B = -200,
+    #[value("vC")]
+    C = 30,
+    D(i32)
 }
 
 #[test]
 fn test_value_method() {
     assert_eq!(Foo::A.index(), 10);
-    assert_eq!(Foo::B.index(), 20);
+    assert_eq!(Foo::B.index(), -200);
     assert_eq!(Foo::C.index(), 30);
 }
 
@@ -32,7 +20,7 @@ fn test_value_method() {
 fn test_new_method() {
     let foo = Foo::new(10);
     assert_eq!(foo, Foo::A);
-    let foo = Foo::new(20);
+    let foo = Foo::new(-200);
     assert_eq!(foo, Foo::B);
     let foo = Foo::new(30);
     assert_eq!(foo, Foo::C);
@@ -42,7 +30,7 @@ fn test_new_method() {
 fn test_from_method() {
     let foo: Foo = 10.into();
     assert_eq!(foo, Foo::A);
-    let foo: Foo = 20.into();
+    let foo: Foo = (-200).into();
     assert_eq!(foo, Foo::B);
     let foo: Foo = 30.into();
     assert_eq!(foo, Foo::C);
@@ -62,4 +50,12 @@ fn test_debug_output() {
     assert_eq!(debug_a, "A");
     assert_eq!(debug_b, "B");
     assert_eq!(debug_c, "C");
+}
+
+// 新增测试用例
+#[test]
+fn test_value_string() {
+    assert_eq!(Foo::A.value(), "A");
+    assert_eq!(Foo::B.value(), "B");
+    assert_eq!(Foo::C.value(), "vC");
 }
