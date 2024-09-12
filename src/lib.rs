@@ -33,52 +33,123 @@ use std::collections::HashMap;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
-use syn::{parse_macro_input, parse_quote, Data, DeriveInput, Fields, Token};
+use syn::{parse_macro_input, parse_quote, Data, DeriveInput, Fields, Token, Variant};
 
 #[proc_macro_attribute]
 pub fn value(_: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let enum_input = parse_macro_input!(item as syn::ItemEnum);
-    structify_impl(enum_input)
-        .unwrap_or_else(|err| err.into_compile_error())
-        .into()
+    let mut enum_input = parse_macro_input!(item as syn::ItemEnum);
+    let ref enum_name = &enum_input.ident;
+    let (reprs, derives, derive_debug, derive_default) = repr_derive(&enum_input.attrs).unwrap();
+
+    let (repr_ty, reprs) = repr_ty(reprs).unwrap();
+
+    let variant_drives_impl =
+        r#enum::variant_drives_impl(enum_name, &mut enum_input.variants, &repr_ty);
+
+    let expanded = quote! {
+        #enum_input
+        #variant_drives_impl
+    };
+
+    expanded.into()
 }
 
-fn structify_impl(r#enum: syn::ItemEnum) -> syn::Result<TokenStream2> {
-    let enum_clone = r#enum.clone();
-    let (reprs, derives, derive_debug, derive_default) = repr_derive(r#enum.attrs)?;
+mod r#enum {
+    use proc_macro2::TokenStream as TokenStream2;
+    use syn::{parse_quote, Variant};
 
-    let (variant_values, default_value, value_strings) = variants(r#enum.variants)?;
+    use crate::repr_derive;
+    fn self_rebuild(slf: syn::ItemEnum) -> syn::Result<TokenStream2> {
+        let mut token_stream = TokenStream2::new();
+        let slf_clone = slf.clone();
+        let vis = slf.vis;
+        let enum_name = slf.ident;
+        let (reprs, derives, derive_debug, derive_default) = repr_derive(&slf.attrs)?;
 
-    let vis = r#enum.vis;
-    let enum_name = r#enum.ident;
-    let (repr_ty, reprs) = repr_ty(reprs)?;
+        let (variant_values, default_value, value_strings) = variants(slf.variants)?;
 
-    let mut token_stream = TokenStream2::new();
-    let struct_item = structify_type(&reprs, &derives, &vis, &enum_name, &repr_ty);
-    let inherent_impl = inherent_impl(&enum_name, &variant_values, &value_strings, &repr_ty);
-    let from_impl = from_impl(&enum_name, &repr_ty);
-    let phantom_enum = phantom_enum(enum_clone);
+        let (repr_ty, reprs) = repr_ty(reprs)?;
 
-    struct_item.to_tokens(&mut token_stream);
-    inherent_impl.to_tokens(&mut token_stream);
-    from_impl.to_tokens(&mut token_stream);
-    phantom_enum.to_tokens(&mut token_stream);
+        let struct_item = structify_type(&reprs, &derives, &vis, &enum_name, &repr_ty);
+        let inherent_impl = inherent_impl(&enum_name, &variant_values, &value_strings, &repr_ty);
+        // let from_impl = from_impl(&enum_name, &repr_ty);
+        // let phantom_enum = phantom_enum(slf_clone);
 
-    if derive_debug {
-        let debug_impl = debug_impl(&enum_name, &variant_values);
-        debug_impl.to_tokens(&mut token_stream);
+        struct_item.to_tokens(&mut token_stream);
+        inherent_impl.to_tokens(&mut token_stream);
+        // from_impl.to_tokens(&mut token_stream);
+        // phantom_enum.to_tokens(&mut token_stream);
+
+        if derive_debug {
+            // let debug_impl = debug_impl(&enum_name, &variant_values);
+            // debug_impl.to_tokens(&mut token_stream);
+        }
+
+        if derive_default {
+            // let default_impl = default_impl(&enum_name, &default_value);
+            // default_impl.to_tokens(&mut token_stream);
+        }
+
+        Ok(token_stream)
     }
+    pub(crate) fn variant_drives_impl(
+        enum_name: &syn::Ident,
+        variants: &mut syn::punctuated::Punctuated<Variant, syn::token::Comma>,
+        repr_ty: &syn::Path,
+    ) -> syn::ItemImpl {
+        let mut variant_derive_value_expr: Vec<syn::Arm> = vec![];
+        let mut variant_derive_index_expr: Vec<syn::Arm> = vec![];
+        for variant in variants {
+            let mut count = 0;
+            let ref ident = variant.ident;
+            for attr in &variant.attrs {
+                let p = attr.path();
+                if p.is_ident("value") {
+                    if let Ok(v) = attr.parse_args::<syn::LitStr>() {
+                        let value = v.value();
+                        variant_derive_value_expr.push(parse_quote! {
+                            Self::#ident => #value,
+                        });
+                    }
+                    count += 1;
+                } else if p.is_ident("index") {
+                    if let Ok(value) = attr.parse_args::<syn::LitInt>() {
+                        variant_derive_index_expr.push(parse_quote! {
+                            Self::#ident => #value.base10_parse().unwrap_or_default() as #repr_ty,
+                        });
+                    }
+                    count += 1;
+                }
+                if count >= 2 {
+                    break;
+                }
+            }
+            if count > 0 {
+                variant.attrs.clear()
+            }
+        }
 
-    if derive_default {
-        let default_impl = default_impl(&enum_name, &default_value);
-        default_impl.to_tokens(&mut token_stream);
+        parse_quote! {
+            impl #enum_name {
+                pub fn value(&self) -> &'static str {
+                    match *self {
+                        #(#variant_derive_value_expr)*
+                        _ => "unknown",
+                    }
+                }
+                pub fn index(&self) -> #repr_ty {
+                    match *self {
+                        #(#variant_derive_index_expr)*
+                        _ => Default::default(),
+                    }
+                }
+            }
+        }
     }
-
-    Ok(token_stream)
 }
 
-fn repr_derive(
-    enum_attrs: Vec<syn::Attribute>,
+pub(crate) fn repr_derive(
+    enum_attrs: &Vec<syn::Attribute>,
 ) -> syn::Result<(Vec<syn::Meta>, Vec<syn::Path>, bool, bool)> {
     let mut reprs = vec![];
     let mut derives = vec![];
@@ -176,181 +247,119 @@ fn repr_ty(reprs: Vec<syn::Meta>) -> syn::Result<(syn::Path, Vec<syn::Meta>)> {
     Ok((repr_ty.unwrap_or_else(|| parse_quote!(i32)), new_reprs))
 }
 
-fn variants(
-    enum_variants: impl IntoIterator<Item = syn::Variant>,
-) -> syn::Result<(
-    HashMap<syn::Ident, syn::Expr>,
-    syn::Expr,
-    HashMap<syn::Ident, String>,
-)> {
-    let mut variant_values = HashMap::new();
-    let mut value_strings = HashMap::new();
-    let mut value: syn::Expr = parse_quote!(0);
-    let mut default_value = None;
-    for v in enum_variants {
-        if !matches!(v.fields, syn::Fields::Unit) {
-            return Err(syn::Error::new(
-                v.span(),
-                "unsupported variant. It only supports unit variant",
-            ));
-        }
+// fn variants(
+//     enum_variants: impl IntoIterator<Item = syn::Variant>,
+// ) -> syn::Result<(
+//     HashMap<syn::Ident, syn::Expr>,
+//     syn::Expr,
+//     HashMap<syn::Ident, String>,
+// )> {
+//     let mut variant_values = HashMap::new();
+//     let mut value_strings = HashMap::new();
+//     let mut value: syn::Expr = parse_quote!(0);
+//     let mut default_value = None;
+//     for v in enum_variants {
+//         if !matches!(v.fields, syn::Fields::Unit) {
+//             return Err(syn::Error::new(
+//                 v.span(),
+//                 "unsupported variant. It only supports unit variant",
+//             ));
+//         }
 
-        let mut value_string = None;
-        for v_attr in &v.attrs {
-            if v_attr.path().is_ident("value") {
-                value_string = Some(v_attr.parse_args::<syn::LitStr>()?.value());
-            }
-        }
+//         let mut value_string = None;
+//         for v_attr in &v.attrs {
+//             if v_attr.path().is_ident("value") {
+//                 value_string = Some(v_attr.parse_args::<syn::LitStr>()?.value());
+//             }
+//         }
 
-        if let Some((_, expr)) = v.discriminant {
-            value = expr
-        }
+//         if let Some((_, expr)) = v.discriminant {
+//             value = expr;
+//         }
 
-        if default_value.is_none() {
-            let v_name = v.ident.clone();
-            default_value = Some(parse_quote!(Self:: #v_name.0));
-        }
-        variant_values.insert(v.ident.clone(), value.clone());
-        if let Some(value_str) = value_string {
-            value_strings.insert(v.ident.clone(), value_str);
-        }
-        value = parse_quote! { #value + 1 };
-    }
+//         if default_value.is_none() {
+//             let v_name = v.ident.clone();
+//             default_value = Some(parse_quote!(Self:: #v_name.0));
+//         }
+//         variant_values.insert(v.ident.clone(), value.clone());
+//         if let Some(value_str) = value_string {
+//             value_strings.insert(v.ident.clone(), value_str);
+//         }
 
-    Ok((
-        variant_values,
-        default_value.unwrap_or_else(|| parse_quote!(0)),
-        value_strings,
-    ))
-}
+//         // 更新 value 为下一个整数值
+//         value = parse_quote! { #value + 1 };
+//     }
 
-fn structify_type(
-    reprs: &[syn::Meta],
-    derives: &[syn::Path],
-    vis: &syn::Visibility,
-    enum_name: &syn::Ident,
-    repr_ty: &syn::Path,
-) -> syn::ItemStruct {
-    parse_quote! {
-        #(#[repr(#reprs)])*
-        #(#[derive(#derives)])*
-        #vis struct #enum_name(#repr_ty);
-    }
-}
+//     Ok((
+//         variant_values,
+//         default_value.unwrap_or_else(|| parse_quote!(0)),
+//         value_strings,
+//     ))
+// }
 
-fn inherent_impl(
-    enum_name: &syn::Ident,
-    variant_values: &HashMap<syn::Ident, syn::Expr>,
-    value_strings: &HashMap<syn::Ident, String>,
-    repr_ty: &syn::Path,
-) -> syn::ItemImpl {
-    let const_variants: Vec<syn::ItemConst> = variant_values
-        .iter()
-        .map(|(v_name, value)| {
-            parse_quote! {
-                pub const #v_name: Self = Self(#value);
-            }
-        })
-        .collect();
+// // fn debug_impl(
+// //     enum_name: &syn::Ident,
+// //     variant_values: &HashMap<syn::Ident, syn::Expr>,
+// // ) -> syn::ItemImpl {
+// //     let stmts: Vec<syn::ExprIf> = variant_values
+// //         .keys()
+// //         .map(|v_name| {
+// //             parse_quote! {
+// //                 if self.0 == Self:: #v_name.0 {
+// //                     return f.debug_struct(stringify!(#v_name)).finish();
+// //                 }
+// //             }
+// //         })
+// //         .collect();
 
-    let value_match_arms: Vec<syn::Arm> = variant_values
-        .iter()
-        .map(|(v_name, value)| {
-            let value_str = value_strings
-                .get(v_name)
-                .cloned()
-                .unwrap_or_else(|| v_name.to_string());
-            parse_quote! {
-                #value => #value_str,
-            }
-        })
-        .collect();
+// //     parse_quote! {
+// //         impl ::core::fmt::Debug for #enum_name {
+// //             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+// //                 #(#stmts)*
 
-    parse_quote! {
-        impl #enum_name {
-            #(#const_variants)*
+// //                 f.debug_tuple(stringify!(#enum_name))
+// //                     .field(&self.0)
+// //                     .finish()
+// //             }
+// //         }
+// //     }
+// // }
 
-            pub const fn new(value: #repr_ty) -> Self {
-                Self(value)
-            }
+// // fn default_impl(enum_name: &syn::Ident, default_value: &syn::Expr) -> syn::ItemImpl {
+// //     parse_quote! {
+// //         impl ::core::default::Default for #enum_name {
+// //             fn default() -> Self {
+// //                 Self(#default_value)
+// //             }
+// //         }
+// //     }
+// // }
 
-            pub fn value(&self) -> &'static str {
-                match self.0 {
-                    #(#value_match_arms)*
-                    _ => "unknown",
-                }
-            }
+// // fn from_impl(enum_name: &syn::Ident, repr_ty: &syn::Path) -> TokenStream2 {
+// //     quote! {
+// //         impl ::core::convert::From<#repr_ty> for #enum_name {
+// //             fn from(value: #repr_ty) -> Self {
+// //                 Self(value)
+// //             }
+// //         }
 
-            pub const fn index(&self) -> #repr_ty {
-                self.0
-            }
-        }
-    }
-}
+// //         impl ::core::convert::From<#enum_name> for #repr_ty {
+// //             fn from(value: #enum_name) -> Self {
+// //                 value.0
+// //             }
+// //         }
+// //     }
+// // }
 
-fn debug_impl(
-    enum_name: &syn::Ident,
-    variant_values: &HashMap<syn::Ident, syn::Expr>,
-) -> syn::ItemImpl {
-    let stmts: Vec<syn::ExprIf> = variant_values
-        .keys()
-        .map(|v_name| {
-            parse_quote! {
-                if self.0 == Self:: #v_name.0 {
-                    return f.debug_struct(stringify!(#v_name)).finish();
-                }
-            }
-        })
-        .collect();
+// // fn phantom_enum(mut r#enum: syn::ItemEnum) -> TokenStream2 {
+// //     r#enum.attrs.clear();
+// //     for v in r#enum.variants.iter_mut() {
+// //         v.attrs.clear();
+// //     }
 
-    parse_quote! {
-        impl ::core::fmt::Debug for #enum_name {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                #(#stmts)*
-
-                f.debug_tuple(stringify!(#enum_name))
-                    .field(&self.0)
-                    .finish()
-            }
-        }
-    }
-}
-
-fn default_impl(enum_name: &syn::Ident, default_value: &syn::Expr) -> syn::ItemImpl {
-    parse_quote! {
-        impl ::core::default::Default for #enum_name {
-            fn default() -> Self {
-                Self(#default_value)
-            }
-        }
-    }
-}
-
-fn from_impl(enum_name: &syn::Ident, repr_ty: &syn::Path) -> TokenStream2 {
-    quote! {
-        impl ::core::convert::From<#repr_ty> for #enum_name {
-            fn from(value: #repr_ty) -> Self {
-                Self(value)
-            }
-        }
-
-        impl ::core::convert::From<#enum_name> for #repr_ty {
-            fn from(value: #enum_name) -> Self {
-                value.0
-            }
-        }
-    }
-}
-
-fn phantom_enum(mut r#enum: syn::ItemEnum) -> TokenStream2 {
-    r#enum.attrs.clear();
-    for v in r#enum.variants.iter_mut() {
-        v.attrs.clear();
-    }
-
-    quote! {
-        const _: () = {
-            #r#enum
-        };
-    }
-}
+// //     quote! {
+// //         const _: () = {
+// //             #r#enum
+// //         };
+// //     }
+// // }
