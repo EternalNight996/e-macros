@@ -21,12 +21,38 @@ pub enum TestEnum {
     },
     Next(Box<TestEnum>),
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::{from_str, json, to_string};
+    #[test]
+    fn test_value_serialization_deserialization() {
+        let original = TestEnumData::V5(json!({
+            "name": "李四",
+            "age": 25,
+            "hobbies": ["音乐", "运动"]
+        }));
 
+        // 序列化
+        let serialized = to_string(&original).expect("序列化失败");
+        println!("序列化结果: {}", serialized);
+
+        // 反序列化
+        let deserialized: TestEnumData = from_str(&serialized).expect("反序列化失败");
+
+        // 验证反序列化后的结果是否与原始数据相同
+        assert_eq!(format!("{:?}", original), format!("{:?}", deserialized));
+
+        // 验证具体字段
+        if let TestEnumData::V5(value) = deserialized {
+            assert_eq!(value["name"], "李四");
+            assert_eq!(value["age"], 25);
+            assert_eq!(value["hobbies"][0], "音乐");
+            assert_eq!(value["hobbies"][1], "运动");
+        } else {
+            panic!("反序列化后的数据结构不正确");
+        }
+    }
     #[test]
     fn test_test_enum_data() {
         let v1 = TestEnumData::V1;

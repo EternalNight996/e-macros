@@ -53,6 +53,8 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
         panic!("Enum derive macro can only be used with enums");
     };
     let serde_impl = generate_serde_impl(name);
+    let serde_json_impl = generate_serde_json_impl(name);
+
     let as_str_impl = generate_as_str_impl(&variants);
     let from_str_impl = generate_from_str_impl(&variants);
     let try_from_str_impl = generate_try_from_str_impl(&variants);
@@ -114,9 +116,29 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
         }
 
         #serde_impl
+        #serde_json_impl
     };
 
     TokenStream::from(expanded)
+}
+fn generate_serde_json_impl(name: &syn::Ident) -> TokenStream2 {
+    quote! {
+        #[cfg(feature = "serde_json")]
+        impl From<&#name> for serde_json::Value {
+            fn from(value: &#name) -> Self {
+                serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
+            }
+        }
+
+        #[cfg(feature = "serde_json")]
+        impl TryFrom<serde_json::Value> for #name {
+            type Error = serde_json::Error;
+
+            fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+                serde_json::from_value(value)
+            }
+        }
+    }
 }
 
 fn generate_serde_impl(name: &syn::Ident) -> TokenStream2 {
