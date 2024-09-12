@@ -25,6 +25,7 @@ pub enum TestEnum {
 mod tests {
     use super::*;
     use serde_json::{from_str, json, to_string};
+    
     #[test]
     fn test_value_serialization_deserialization() {
         let original = TestEnumData::V5(json!({

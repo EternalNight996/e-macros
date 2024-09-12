@@ -33,6 +33,7 @@ use syn::{parse_macro_input, Data, DeriveInput, Fields};
 pub fn derive_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+
     let variants = if let Data::Enum(data_enum) = &input.data {
         data_enum
             .variants
@@ -61,17 +62,26 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
     let try_from_i32_impl = generate_try_from_i32_impl(&variants);
     let to_index_impl = generate_to_index_impl(&variants);
     let all_variants_impl = generate_all_variants_impl(&variants);
+    let generate_as_variant = generate_as_variant_impl(&variants);
     let variant_count = variants.len();
     let expanded = quote! {
         impl #name {
+            /// Returns the string representation of the enum variant.
             pub fn as_str(&self) -> &'static str {
                 #as_str_impl
             }
+            /// Returns the index of the enum variant.
             pub fn to_index(&self) -> i32 {
                 #to_index_impl
             }
-            pub const ALL:&'static[Self] = #all_variants_impl;
-            pub const COUNT:usize = #variant_count;
+            /// Only ident
+            pub fn as_variant(&self) -> &'static str {
+                #generate_as_variant
+            }
+            /// Returns a slice containing all variants of the enum.
+            pub const ALL: &'static [Self] = #all_variants_impl;
+            /// Returns the count of all variants of the enum.
+            pub const COUNT: usize = #variant_count;
         }
 
         impl std::str::FromStr for #name {
@@ -162,6 +172,22 @@ fn generate_serde_impl(name: &syn::Ident) -> TokenStream2 {
                 let s = String::deserialize(deserializer)?;
                 s.parse::<Self>().map_err(serde::de::Error::custom)
             }
+        }
+    }
+}
+
+fn generate_as_variant_impl(variants: &[(&syn::Ident, i32, String, &Fields)]) -> TokenStream2 {
+    let match_arms = variants
+        .iter()
+        .map(|(ident, _, _desc, fields)| match fields {
+            Fields::Unit => quote! { Self::#ident => stringify!(#ident), },
+            Fields::Unnamed(_) => quote! { Self::#ident(..) => stringify!(#ident), },
+            Fields::Named(_) => quote! { Self::#ident { .. } => stringify!(#ident), },
+        });
+
+    quote! {
+        match self {
+            #(#match_arms)*
         }
     }
 }

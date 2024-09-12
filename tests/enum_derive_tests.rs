@@ -15,6 +15,43 @@ mod tests {
         #[default]
         Variant4,
     }
+    #[test]
+    fn test_enum_functionality2() {
+        let variants = [
+            (TestEnum::Variant1, "测试1", 0, "Variant1"),
+            (TestEnum::Variant2, "测试2", 1, "Variant2"),
+            (TestEnum::Variant3, "Variant3", 2, "Variant3"),
+            (TestEnum::Variant4, "Variant4", 3, "Variant4"),
+        ];
+
+        for (variant, name, index, variant_name) in variants.iter() {
+            // Test as_str
+            assert_eq!(variant.as_str(), *name);
+
+            // Test Display
+            assert_eq!(format!("{}", variant), *name);
+
+            // Test FromStr
+            assert_eq!(TestEnum::from_str(name).unwrap(), *variant);
+
+            // Test TryFrom<i32>
+            assert_eq!(TestEnum::try_from(*index).unwrap(), *variant);
+
+            // Test Into<i32>
+            assert_eq!(Into::<i32>::into(*variant), *index);
+
+            // Test TryFrom<&str>
+            assert_eq!(TestEnum::from_str(*name as &str).unwrap(), *variant);
+
+            // Test as_variant
+            assert_eq!(variant.as_variant(), *variant_name);
+        }
+
+        // Test invalid cases
+        assert!(TestEnum::from_str("Invalid").is_err());
+        assert!(TestEnum::try_from(100).is_err());
+        assert!(TestEnum::from_str("Invalid" as &str).is_err());
+    }
 
     #[test]
     fn test_enum_functionality() {
