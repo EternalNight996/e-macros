@@ -27,7 +27,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, parse_quote, spanned::Spanned as _, Variant};
+use syn::{parse_macro_input, parse_quote, Variant};
 
 #[proc_macro_attribute]
 pub fn value(_: TokenStream, item: TokenStream) -> TokenStream {
@@ -55,27 +55,39 @@ mod r#enum {
 
             for (i, attr) in variant.attrs.iter().enumerate() {
                 if attr.path().is_ident("e") {
-                    if let Ok(nested) = attr.parse_args::<syn::Meta>() {
-                        if let syn::Meta::NameValue(nv) = nested {
-                            if nv.path.is_ident("value") {
-                                if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(v), .. }) = &nv.value {
-                                    let value = v.value();
-                                    variant_derive_value_expr.push(parse_quote! {
-                                        Self::#ident => #value,
-                                    });
-                                    attrs_to_remove.push(i);
-                                }
-                            } else if nv.path.is_ident("index") {
-                                let index_expr = &nv.value;
-                                variant_derive_index_expr.push(parse_quote! {
-                                    Self::#ident => {
-                                        let index: #repr_ty = #index_expr;
-                                        index
-                                    },
-                                });
-                                attrs_to_remove.push(i);
+                    let mut value = None;
+                    let mut index: Option<syn::Expr> = None;
+
+                    let _ = attr.parse_nested_meta(|nv| {
+                        if nv.path.is_ident("value") {
+                            if let Ok(syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(v),
+                                ..
+                            })) = nv.value().and_then(|v| v.parse())
+                            {
+                                value = Some(v.value());
                             }
+                        } else if nv.path.is_ident("index") {
+                            index = nv.value().and_then(|v| v.parse()).ok();
                         }
+                        Ok(())
+                    });
+                    if value.is_some() || index.is_some() {
+                        attrs_to_remove.push(i);
+                    }
+                    if let Some(v) = value {
+                        variant_derive_value_expr.push(parse_quote! {
+                            Self::#ident => #v,
+                        });
+                    }
+
+                    if let Some(idx) = index {
+                        variant_derive_index_expr.push(parse_quote! {
+                            Self::#ident => {
+                                let index: #repr_ty = #idx;
+                                index
+                            },
+                        });
                     }
                 }
             }
@@ -118,10 +130,15 @@ mod r#enum {
             .into_iter()
             .partition(|attr| attr.path().is_ident("derive"));
 
-        let derive_items = derive_attrs.iter().flat_map(|attr| {
-            attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
-                .unwrap_or_default()
-        });
+        let derive_items: Vec<syn::Path> = derive_attrs
+            .iter()
+            .flat_map(|attr| {
+                attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        let has_debug = derive_items.iter().any(|path| path.is_ident("Debug"));
 
         let repr_items: Vec<syn::Meta> = repr_attrs
             .iter()
@@ -135,6 +152,18 @@ mod r#enum {
 
         let variant_drives_impl = variant_drives_impl(enum_name, &mut variants, &repr_ty);
 
+        let display_impl = if has_debug {
+            quote! {
+                impl std::fmt::Display for #enum_name {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{}", self.value())
+                    }
+                }
+            }
+        } else {
+            quote! {}
+        };
+
         Ok(quote! {
             #(#other_attrs)*
             #(#[repr(#new_reprs)])*
@@ -144,33 +173,27 @@ mod r#enum {
             }
 
             #variant_drives_impl
+
+            #display_impl
         })
     }
 }
 
 fn repr_ty(reprs: Vec<syn::Meta>) -> syn::Result<(syn::Path, Vec<syn::Meta>)> {
     let mut repr_ty = None;
-    let has_transparent = reprs.iter().any(|r| r.path().is_ident("transparent"));
     let mut new_reprs = Vec::new();
 
     for repr in reprs {
         if let syn::Meta::Path(path) = &repr {
             if [
-                "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize",
-                "usize",
+                "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "isize", "usize",
             ]
             .iter()
             .any(|&t| path.is_ident(t))
             {
-                if repr_ty.is_none() && !has_transparent {
-                    repr_ty = Some(path.clone());
-                    continue;
-                } else if repr_ty.is_some() {
-                    return Err(syn::Error::new(
-                        path.span(),
-                        "conflicting representation hints",
-                    ));
-                }
+                repr_ty = Some(path.clone());
+                new_reprs.push(repr.clone());
+                continue;
             }
         }
         new_reprs.push(repr);
