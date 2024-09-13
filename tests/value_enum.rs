@@ -4,15 +4,15 @@ use e_macros::value;
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(u8)]
 enum TestEnum {
-    #[value("one")]
-    #[index(111)]
+    #[e(value = "one")]
+    #[e(index = 111)]
     One,
-    #[value("two")]
-    #[index(2)]
+    #[e(value = "two")]
+    #[e(index = 2)]
     Two,
-    #[value("three")]
+    #[e(value = "three")]
     Three,
-    #[value("three2")]
+    #[e(value = "three2")]
     Three2,
 }
 

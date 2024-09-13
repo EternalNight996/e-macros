@@ -54,23 +54,28 @@ mod r#enum {
             let mut attrs_to_remove = Vec::new();
 
             for (i, attr) in variant.attrs.iter().enumerate() {
-                if attr.path().is_ident("value") {
-                    if let Ok(v) = attr.parse_args::<syn::LitStr>() {
-                        let value = v.value();
-                        variant_derive_value_expr.push(parse_quote! {
-                            Self::#ident => #value,
-                        });
-                        attrs_to_remove.push(i);
-                    }
-                } else if attr.path().is_ident("index") {
-                    if let Ok(value) = attr.parse_args::<syn::Expr>() {
-                        variant_derive_index_expr.push(parse_quote! {
-                            Self::#ident => {
-                                let index: #repr_ty = #value;
-                                index
-                            },
-                        });
-                        attrs_to_remove.push(i);
+                if attr.path().is_ident("e") {
+                    if let Ok(nested) = attr.parse_args::<syn::Meta>() {
+                        if let syn::Meta::NameValue(nv) = nested {
+                            if nv.path.is_ident("value") {
+                                if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(v), .. }) = &nv.value {
+                                    let value = v.value();
+                                    variant_derive_value_expr.push(parse_quote! {
+                                        Self::#ident => #value,
+                                    });
+                                    attrs_to_remove.push(i);
+                                }
+                            } else if nv.path.is_ident("index") {
+                                let index_expr = &nv.value;
+                                variant_derive_index_expr.push(parse_quote! {
+                                    Self::#ident => {
+                                        let index: #repr_ty = #index_expr;
+                                        index
+                                    },
+                                });
+                                attrs_to_remove.push(i);
+                            }
+                        }
                     }
                 }
             }
