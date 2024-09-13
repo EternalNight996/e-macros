@@ -245,6 +245,7 @@ enum TestEnum {
     MaxI8Index,
 }
 
+
 #[value]
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 #[repr(C)]
