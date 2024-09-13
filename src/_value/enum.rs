@@ -9,7 +9,7 @@ pub(crate) fn variant_drives_impl(
 ) -> syn::ItemImpl {
     let mut variant_derive_value_expr: Vec<syn::Arm> = Vec::new();
     let mut variant_derive_index_expr: Vec<syn::Arm> = Vec::new();
-
+    let mut variant_derive_from_expr: Vec<syn::Arm> = Vec::new();
     for variant in variants.iter_mut() {
         let ident = &variant.ident;
         let mut attrs_to_remove = Vec::new();
@@ -34,7 +34,7 @@ pub(crate) fn variant_drives_impl(
                 attrs_to_remove.push(i);
             }
         }
-        // Remove processed attributes
+        // 移除已处理的属性
         for &i in attrs_to_remove.iter().rev() {
             variant.attrs.remove(i);
         }
@@ -63,6 +63,9 @@ pub(crate) fn variant_drives_impl(
         }
 
         if let Some(idx) = index {
+            variant_derive_from_expr.push(parse_quote! {
+                #idx => Ok(Self::#ident),
+            });
             match &variant.fields {
                 syn::Fields::Unit => {
                     variant_derive_index_expr.push(parse_quote! {
@@ -96,6 +99,13 @@ pub(crate) fn variant_drives_impl(
                     _ => <#repr_ty>::default(),
                 }
             }
+
+            pub fn from(value: #repr_ty) -> Result<Self, &'static str> {
+                match value {
+                    #(#variant_derive_from_expr)*
+                    _ => Err("Invalid value"),
+                }
+            }
         }
     }
 }
@@ -125,7 +135,6 @@ pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenSt
         #variant_drives_impl
 
         #display_impl
-
     })
 }
 
