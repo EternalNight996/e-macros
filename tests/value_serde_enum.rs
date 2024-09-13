@@ -114,9 +114,9 @@ pub enum TestEnumData {
 pub enum TestEnum {
     #[default]
     #[e(value = "上层")]
-    Up,
+    Up = 0,
     #[e(value = "下层")]
-    Down,
+    Down = 1,
     Data {
         data: TestEnumData,
     },
@@ -130,5 +130,5 @@ pub enum TestEnum1 {
     Up,
     #[e(value = "下层")]
     Down,
-    C(i32)
+    C(i32),
 }

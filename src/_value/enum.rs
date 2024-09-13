@@ -1,10 +1,10 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_quote, punctuated::Punctuated, Fields, Variant};
+use syn::{parse_quote, punctuated::Punctuated};
 
 pub(crate) fn variant_drives_impl(
     enum_name: &syn::Ident,
-    variants: &mut Punctuated<Variant, syn::token::Comma>,
+    variants: &mut Punctuated<syn::Variant, syn::token::Comma>,
     repr_ty: &syn::Path,
 ) -> syn::ItemImpl {
     let mut variant_derive_value_expr: Vec<syn::Arm> = Vec::new();
@@ -50,9 +50,14 @@ pub(crate) fn variant_drives_impl(
                     Self::#ident => #value_expr,
                 });
             }
-            _ => {
+            syn::Fields::Named(_) => {
                 variant_derive_value_expr.push(parse_quote! {
                     Self::#ident { .. } => #value_expr,
+                });
+            }
+            syn::Fields::Unnamed(_) => {
+                variant_derive_value_expr.push(parse_quote! {
+                    Self::#ident(..) => #value_expr,
                 });
             }
         }
@@ -61,18 +66,17 @@ pub(crate) fn variant_drives_impl(
             match &variant.fields {
                 syn::Fields::Unit => {
                     variant_derive_index_expr.push(parse_quote! {
-                        Self::#ident => {
-                            let index: #repr_ty = #idx;
-                            index
-                        },
+                        Self::#ident => #idx,
                     });
                 }
-                _ => {
+                syn::Fields::Named(_) => {
                     variant_derive_index_expr.push(parse_quote! {
-                        Self::#ident { .. } => {
-                            let index: #repr_ty = #idx;
-                            index
-                        },
+                        Self::#ident { .. } => #idx,
+                    });
+                }
+                syn::Fields::Unnamed(_) => {
+                    variant_derive_index_expr.push(parse_quote! {
+                        Self::#ident(..) => #idx,
                     });
                 }
             }
@@ -82,14 +86,14 @@ pub(crate) fn variant_drives_impl(
     parse_quote! {
         impl #enum_name {
             pub fn value(&self) -> &'static str {
-                match *self {
+                match self {
                     #(#variant_derive_value_expr)*
                 }
             }
             pub fn index(&self) -> #repr_ty {
-                match *self {
+                match self {
                     #(#variant_derive_index_expr)*
-                    _ => Default::default(),
+                    _ => <#repr_ty>::default(),
                 }
             }
         }
@@ -105,15 +109,14 @@ pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenSt
     let (has_serialize, has_deserialize, derive_items) = process_derive_attrs(derive_attrs);
     let has_debug = derive_items.iter().any(|path| path.is_ident("Debug"));
 
-    let repr_items = parse_repr_attrs(repr_attrs);
-    let (repr_ty, new_reprs) = super::repr_ty(repr_items)?;
+    let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
 
     let variant_drives_impl = variant_drives_impl(enum_name, &mut variants, &repr_ty);
     let display_impl = generate_display_impl(enum_name, has_debug);
 
     Ok(quote! {
         #(#other_attrs)*
-        #(#[repr(#new_reprs)])*
+        #new_reprs
         #[derive(#(#derive_items),*)]
         #vis enum #enum_name {
             #variants
@@ -170,16 +173,6 @@ fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, Vec<s
             items.push(path.clone());
             (ser || is_serialize, de || is_deserialize, items)
         })
-}
-
-fn parse_repr_attrs(repr_attrs: Vec<syn::Attribute>) -> Vec<syn::Meta> {
-    repr_attrs
-        .iter()
-        .flat_map(|attr| {
-            attr.parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-                .unwrap_or_default()
-        })
-        .collect()
 }
 
 fn generate_display_impl(enum_name: &syn::Ident, has_debug: bool) -> TokenStream2 {
