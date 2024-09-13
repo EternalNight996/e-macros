@@ -138,8 +138,33 @@ mod r#enum {
             })
             .collect();
 
-        let has_debug = derive_items.iter().any(|path| path.is_ident("Debug"));
+        let (has_serialize, has_deserialize, derive_items): (bool, bool, Vec<syn::Path>) =
+            derive_items.into_iter().fold(
+                (false, false, Vec::new()),
+                |(ser, de, mut items), path| {
+                    let is_serialize = path.is_ident("Serialize")
+                        || path
+                            .segments
+                            .last()
+                            .map_or(false, |seg| seg.ident == "Serialize");
+                    let is_deserialize = path.is_ident("Deserialize")
+                        || path
+                            .segments
+                            .last()
+                            .map_or(false, |seg| seg.ident == "Deserialize");
 
+                    if is_serialize {
+                        (true, de, items)
+                    } else if is_deserialize {
+                        (ser, true, items)
+                    } else {
+                        items.push(path);
+                        (ser, de, items)
+                    }
+                },
+            );
+
+        let has_debug = derive_items.iter().any(|path| path.is_ident("Debug"));
         let repr_items: Vec<syn::Meta> = repr_attrs
             .iter()
             .flat_map(|attr| {
@@ -163,7 +188,77 @@ mod r#enum {
         } else {
             quote! {}
         };
+        let from_str_impl = {
+            let variant_matches = variants.iter().map(|variant| {
+                let ident = &variant.ident;
+                match &variant.fields {
+                    syn::Fields::Unit => {
+                        quote! {
+                            s if s == Self::#ident.value() => Ok(Self::#ident),
+                        }
+                    },
+                    syn::Fields::Unnamed(fields) => {
+                        let default_values = fields.unnamed.iter().map(|_| quote!(Default::default()));
+                        quote! {
+                            s if s.starts_with(Self::#ident(#(#default_values),*).value()) => {
+                                Err(format!("无法从字符串解析元组变体 {}", stringify!(#ident)))
+                            },
+                        }
+                    },
+                    syn::Fields::Named(fields) => {
+                        let field_names = fields.named.iter().map(|f| &f.ident);
+                        quote! {
+                            s if s.starts_with(Self::#ident { #(#field_names: Default::default()),* }.value()) => {
+                                Err(format!("无法从字符串解析结构体变体 {}", stringify!(#ident)))
+                            },
+                        }
+                    }
+                }
+            });
 
+            quote! {
+                impl std::str::FromStr for #enum_name {
+                    type Err = String;
+
+                    fn from_str(s: &str) -> Result<Self, Self::Err> {
+                        match s {
+                            #(#variant_matches)*
+                            _ => Err(format!("未知的枚举变体: {}", s)),
+                        }
+                    }
+                }
+            }
+        };
+
+        let serialize_impl = if has_serialize {
+            quote! {
+                impl serde::Serialize for #enum_name {
+                    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                    where
+                        S: serde::Serializer,
+                    {
+                        serializer.serialize_str(self.value())
+                    }
+                }
+            }
+        } else {
+            quote! {}
+        };
+        let deserialize_impl = if has_deserialize {
+            quote! {
+                impl<'de> serde::Deserialize<'de> for #enum_name {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: serde::Deserializer<'de>,
+                    {
+                        let s = String::deserialize(deserializer)?;
+                        s.parse::<Self>().map_err(serde::de::Error::custom)
+                    }
+                }
+            }
+        } else {
+            quote! {}
+        };
         Ok(quote! {
             #(#other_attrs)*
             #(#[repr(#new_reprs)])*
@@ -175,6 +270,12 @@ mod r#enum {
             #variant_drives_impl
 
             #display_impl
+
+            #from_str_impl
+
+            #serialize_impl
+
+            #deserialize_impl
         })
     }
 }
