@@ -128,7 +128,7 @@ fn test() -> Result<()> {
 ```
 
 ## `💡!important：`
-<!-- ####There are three requirements for building on the windows system environment:
+<!-- ####There are 测试 requirements for building on the windows system environment:
 
 You must use the rust version using the MSVC toolchain
 

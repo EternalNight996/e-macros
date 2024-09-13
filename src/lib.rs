@@ -52,12 +52,10 @@ mod r#enum {
         for variant in variants.iter_mut() {
             let ident = &variant.ident;
             let mut attrs_to_remove = Vec::new();
-
+            let mut value = None;
+            let mut index: Option<syn::Expr> = None;
             for (i, attr) in variant.attrs.iter().enumerate() {
                 if attr.path().is_ident("e") {
-                    let mut value = None;
-                    let mut index: Option<syn::Expr> = None;
-
                     let _ = attr.parse_nested_meta(|nv| {
                         if nv.path.is_ident("value") {
                             if let Ok(syn::Expr::Lit(syn::ExprLit {
@@ -72,29 +70,28 @@ mod r#enum {
                         }
                         Ok(())
                     });
-                    if value.is_some() || index.is_some() {
-                        attrs_to_remove.push(i);
-                    }
-                    if let Some(v) = value {
-                        variant_derive_value_expr.push(parse_quote! {
-                            Self::#ident => #v,
-                        });
-                    }
-
-                    if let Some(idx) = index {
-                        variant_derive_index_expr.push(parse_quote! {
-                            Self::#ident => {
-                                let index: #repr_ty = #idx;
-                                index
-                            },
-                        });
-                    }
+                    attrs_to_remove.push(i);
                 }
             }
-
             // Remove processed attributes
             for &i in attrs_to_remove.iter().rev() {
                 variant.attrs.remove(i);
+            }
+            let value_expr = if let Some(v) = value {
+                quote! { #v }
+            } else {
+                quote! { stringify!(#ident) }
+            };
+            variant_derive_value_expr.push(parse_quote! {
+                Self::#ident => #value_expr,
+            });
+            if let Some(idx) = index {
+                variant_derive_index_expr.push(parse_quote! {
+                    Self::#ident => {
+                        let index: #repr_ty = #idx;
+                        index
+                    },
+                });
             }
         }
 
@@ -103,7 +100,6 @@ mod r#enum {
                 pub fn value(&self) -> &'static str {
                     match *self {
                         #(#variant_derive_value_expr)*
-                        _ => "unknown",
                     }
                 }
                 pub fn index(&self) -> #repr_ty {
@@ -153,14 +149,8 @@ mod r#enum {
                             .last()
                             .map_or(false, |seg| seg.ident == "Deserialize");
 
-                    if is_serialize {
-                        (true, de, items)
-                    } else if is_deserialize {
-                        (ser, true, items)
-                    } else {
-                        items.push(path);
-                        (ser, de, items)
-                    }
+                    items.push(path.clone());
+                    (ser || is_serialize, de || is_deserialize, items)
                 },
             );
 
@@ -230,35 +220,6 @@ mod r#enum {
             }
         };
 
-        let serialize_impl = if has_serialize {
-            quote! {
-                impl serde::Serialize for #enum_name {
-                    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                    where
-                        S: serde::Serializer,
-                    {
-                        serializer.serialize_str(self.value())
-                    }
-                }
-            }
-        } else {
-            quote! {}
-        };
-        let deserialize_impl = if has_deserialize {
-            quote! {
-                impl<'de> serde::Deserialize<'de> for #enum_name {
-                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-                    where
-                        D: serde::Deserializer<'de>,
-                    {
-                        let s = String::deserialize(deserializer)?;
-                        s.parse::<Self>().map_err(serde::de::Error::custom)
-                    }
-                }
-            }
-        } else {
-            quote! {}
-        };
         Ok(quote! {
             #(#other_attrs)*
             #(#[repr(#new_reprs)])*
@@ -272,10 +233,6 @@ mod r#enum {
             #display_impl
 
             #from_str_impl
-
-            #serialize_impl
-
-            #deserialize_impl
         })
     }
 }

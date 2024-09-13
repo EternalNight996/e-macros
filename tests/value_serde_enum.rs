@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[e_macros::value]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum TestEnumData {
     #[default]
-    // #[serde(rename = "name")]
+    #[serde(rename = "name")]
     #[e(value = "一", index = 10)]
     V1,
     V2(String),

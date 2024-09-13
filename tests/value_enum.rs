@@ -11,12 +11,12 @@ mod tests {
     fn test_value() {
         assert_eq!(TestEnum::One.value(), "one");
         assert_eq!(TestEnum::Two.value(), "two");
-        assert_eq!(TestEnum::Three.value(), "three");
+        assert_eq!(TestEnum::Three.value(), "测试");
         assert_eq!(TestEnum::Three2.value(), "three2");
-        assert_eq!(TestEnum::Next.value(), "unknown");
-        assert_eq!(TestEnum::Next2.value(), "unknown");
+        assert_eq!(TestEnum::Next.value(), "Next");
+        assert_eq!(TestEnum::Next2.value(), "Next2");
         assert_eq!(TestEnum::EmptyValue.value(), "");
-        assert_eq!(TestEnum::MaxI8Index.value(), "unknown");
+        assert_eq!(TestEnum::MaxI8Index.value(), "MaxI8Index");
     }
 
     #[test]
@@ -63,8 +63,8 @@ mod tests {
 
     #[test]
     fn test_default_values() {
-        // 测试没有显式设置 value 或 index 的情况
-        assert_eq!(TestEnum::Next.value(), "unknown");
+        // 测试没有显式设置 value 的情况
+        assert_eq!(TestEnum::Next.value(), "Next");
         assert_eq!(TestEnum::Next.index(), 0);
     }
 
@@ -95,12 +95,12 @@ mod tests {
             match e {
                 TestEnum::One => ("one", 111),
                 TestEnum::Two => ("two", 2),
-                TestEnum::Three => ("three", 0),
+                TestEnum::Three => ("测试", 0),
                 TestEnum::Three2 => ("three2", 3),
-                TestEnum::Next => ("unknown", 0),
-                TestEnum::Next2 => ("unknown", 118),
+                TestEnum::Next => ("Next", 0),
+                TestEnum::Next2 => ("Next2", 118),
                 TestEnum::EmptyValue => ("", 0),
-                TestEnum::MaxI8Index => ("unknown", 127),
+                TestEnum::MaxI8Index => ("MaxI8Index", 127),
             }
         }
 
@@ -130,12 +130,12 @@ mod tests {
     fn test_display_impl() {
         assert_eq!(format!("{}", TestEnum::One), "one");
         assert_eq!(format!("{}", TestEnum::Two), "two");
-        assert_eq!(format!("{}", TestEnum::Three), "three");
+        assert_eq!(format!("{}", TestEnum::Three), "测试");
         assert_eq!(format!("{}", TestEnum::Three2), "three2");
-        assert_eq!(format!("{}", TestEnum::Next), "unknown");
-        assert_eq!(format!("{}", TestEnum::Next2), "unknown");
+        assert_eq!(format!("{}", TestEnum::Next), "Next");
+        assert_eq!(format!("{}", TestEnum::Next2), "Next2");
         assert_eq!(format!("{}", TestEnum::EmptyValue), "");
-        assert_eq!(format!("{}", TestEnum::MaxI8Index), "unknown");
+        assert_eq!(format!("{}", TestEnum::MaxI8Index), "MaxI8Index");
     }
 
     #[test]
@@ -232,7 +232,7 @@ enum TestEnum {
     One,
     #[e(value = "two", index = 2)]
     Two,
-    #[e(value = "three")]
+    #[e(value = "测试")]
     Three,
     #[e(index = 3, value = "three2")]
     Three2,
