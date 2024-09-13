@@ -86,6 +86,8 @@ pub(crate) fn variant_drives_impl(
         }
     }
 
+    let variant_count = variants.len();
+
     parse_quote! {
         impl #enum_name {
             pub fn value(&self) -> &'static str {
@@ -103,8 +105,12 @@ pub(crate) fn variant_drives_impl(
             pub fn from(value: #repr_ty) -> Result<Self, &'static str> {
                 match value {
                     #(#variant_derive_from_expr)*
-                    _ => Err("Invalid value"),
+                    _ => Err(concat!("Invalid value ", stringify!(#repr_ty), " for enum \"", stringify!(#enum_name), "\"")),
                 }
+            }
+
+            pub fn variant_count() -> usize {
+                #variant_count
             }
         }
     }
@@ -116,9 +122,7 @@ pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenSt
     let mut variants = enum_input.variants;
 
     let (derive_attrs, repr_attrs, other_attrs) = split_attributes(enum_input.attrs);
-    let (has_serialize, has_deserialize, derive_items) = process_derive_attrs(derive_attrs);
-    let has_debug = derive_items.iter().any(|path| path.is_ident("Debug"));
-
+    let (has_serialize, has_deserialize, has_debug, derive_items) = process_derive_attrs(derive_attrs);
     let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
 
     let variant_drives_impl = variant_drives_impl(enum_name, &mut variants, &repr_ty);
@@ -156,32 +160,38 @@ fn split_attributes(
     (derive_attrs, repr_attrs, other_attrs)
 }
 
-fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, Vec<syn::Path>) {
-    let derive_items: Vec<syn::Path> = derive_attrs
-        .iter()
-        .flat_map(|attr| {
-            attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
-                .unwrap_or_default()
-        })
-        .collect();
+fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, bool, Vec<syn::Path>) {
+    println!("Processing derive attributes: {:?}", derive_attrs);
+    
+    let mut has_serialize = false;
+    let mut has_deserialize = false;
+    let mut has_debug = false;
+    let mut derive_items = Vec::new();
 
-    derive_items
-        .into_iter()
-        .fold((false, false, Vec::new()), |(ser, de, mut items), path| {
-            let is_serialize = path.is_ident("Serialize")
-                || path
-                    .segments
-                    .last()
-                    .map_or(false, |seg| seg.ident == "Serialize");
-            let is_deserialize = path.is_ident("Deserialize")
-                || path
-                    .segments
-                    .last()
-                    .map_or(false, |seg| seg.ident == "Deserialize");
+    for attr in derive_attrs {
+        if attr.path().is_ident("derive") {
+            if let Ok(list) = attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated) {
+                for item in list {
+                    let last_segment = item.segments.last().map(|s| s.ident.to_string());
+                    println!("Checking derive item: {:?}", last_segment);
+                    
+                    match last_segment.as_deref() {
+                        Some("Serialize") => has_serialize = true,
+                        Some("Deserialize") => has_deserialize = true,
+                        Some("Debug") => has_debug = true,
+                        _ => {}
+                    }
+                    
+                    derive_items.push(item);
+                }
+            }
+        }
+    }
 
-            items.push(path.clone());
-            (ser || is_serialize, de || is_deserialize, items)
-        })
+    println!("Has Serialize: {}, Has Deserialize: {}, Has Debug: {}", has_serialize, has_deserialize, has_debug);
+    println!("Derive items: {:?}", derive_items);
+
+    (has_serialize, has_deserialize, has_debug, derive_items)
 }
 
 fn generate_display_impl(enum_name: &syn::Ident, has_debug: bool) -> TokenStream2 {
