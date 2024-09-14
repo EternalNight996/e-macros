@@ -2,18 +2,38 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_quote, punctuated::Punctuated};
 
+/// Creates the structure for the enhanced enum.
+///
+/// This function generates the main implementation for the enum, including:
+/// - Attribute processing
+/// - Variant implementations
+/// - Display and Serde implementations
 pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenStream2> {
     let enum_name = enum_input.ident;
     let vis = enum_input.vis;
     let attrs = enum_input.attrs;
     let mut variants = enum_input.variants;
+    
+    // Split attributes into derive, repr, and other attributes
     let (derive_attrs, repr_attrs, other_attrs) = split_attributes(attrs);
+    
+    // Process derive attributes to determine which traits are derived
     let (has_debug, has_serialize, has_deserialize, derive_items) =
         process_derive_attrs(derive_attrs);
+    
+    // Get representation type and new repr attributes
     let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
+    
+    // Generate implementations for variants
     let variant_drives_impl = variant_drives_impl(&enum_name, &mut variants, &repr_ty);
+    
+    // Generate Display implementation if Debug is derived
     let display_impl = generate_display_impl(&enum_name, has_debug);
+    
+    // Generate Serde implementation if Serialize or Deserialize is derived
     let serde_impl = serde_impl(&enum_name, has_serialize, has_deserialize);
+    
+    // Combine all generated code into final implementation
     Ok(quote! {
         #(#other_attrs)*
         #new_reprs
@@ -30,6 +50,12 @@ pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenSt
     })
 }
 
+/// Generates implementations for enum variants.
+///
+/// This function creates:
+/// - TryFrom<repr_ty> implementation
+/// - TryFrom<&str> implementation
+/// - value(), index(), and variant_count() methods
 pub(crate) fn variant_drives_impl(
     enum_name: &syn::Ident,
     variants: &mut Punctuated<syn::Variant, syn::token::Comma>,
@@ -40,11 +66,15 @@ pub(crate) fn variant_drives_impl(
     let mut variant_derive_from_expr: Vec<syn::Arm> = Vec::new();
     let mut variant_derive_from_str_expr: Vec<TokenStream2> = Vec::new();
     let mut last_index: syn::Expr = parse_quote!(0 as #repr_ty);
+
+    // Process each variant
     for variant in variants.iter_mut() {
         let ident = &variant.ident;
         let mut attrs_to_remove = Vec::new();
         let mut value = None;
         let mut index: Option<syn::Expr> = None;
+
+        // Extract custom attributes (e.g., value and index)
         for (i, attr) in variant.attrs.iter().enumerate() {
             if attr.path().is_ident("e") {
                 let _ = attr.parse_nested_meta(|nv| {
@@ -64,16 +94,19 @@ pub(crate) fn variant_drives_impl(
                 attrs_to_remove.push(i);
             }
         }
-        // 移除已处理的属性
+        // Remove processed attributes
         for &i in attrs_to_remove.iter().rev() {
             variant.attrs.remove(i);
         }
+
+        // Generate value expression
         let value_expr = if let Some(v) = value {
             quote! { #v }
         } else {
             quote! { stringify!(#ident) }
         };
 
+        // Generate match arms for value, index, and from implementations
         match &variant.fields {
             syn::Fields::Unit => {
                 variant_derive_value_expr.push(parse_quote! {
@@ -113,6 +146,7 @@ pub(crate) fn variant_drives_impl(
             }
         }
 
+        // Generate index expression
         let idx = if let Some(idx) = index {
             last_index = parse_quote!(#idx);
             idx
@@ -126,6 +160,8 @@ pub(crate) fn variant_drives_impl(
             }};
             last_index.clone()
         };
+
+        // Generate match arms for index and from implementations
         match &variant.fields {
             syn::Fields::Unit => {
                 variant_derive_index_expr.push(parse_quote! {
@@ -149,6 +185,8 @@ pub(crate) fn variant_drives_impl(
     }
 
     let variant_count = variants.len();
+
+    // Generate TryFrom<repr_ty> implementation
     let from_impl = quote! {
         impl TryFrom<#repr_ty> for #enum_name {
             type Error = &'static str;
@@ -161,6 +199,8 @@ pub(crate) fn variant_drives_impl(
             }
         }
     };
+
+    // Generate TryFrom<&str> implementation
     let from_str_impl = quote! {
         impl TryFrom<&str> for #enum_name {
             type Error = &'static str;
@@ -173,6 +213,8 @@ pub(crate) fn variant_drives_impl(
             }
         }
     };
+
+    // Combine all implementations
     quote! {
         #from_impl
 
@@ -197,6 +239,7 @@ pub(crate) fn variant_drives_impl(
     }
 }
 
+/// Generates Serde-related implementations if Serialize or Deserialize is derived.
 fn serde_impl(enum_name: &syn::Ident, has_serialize: bool, has_deserialize: bool) -> TokenStream2 {
     let serialize_impl = if has_serialize {
         quote! {
@@ -225,6 +268,8 @@ fn serde_impl(enum_name: &syn::Ident, has_serialize: bool, has_deserialize: bool
         }
     }
 }
+
+/// Splits attributes into derive, repr, and other attributes.
 fn split_attributes(
     attrs: Vec<syn::Attribute>,
 ) -> (
@@ -249,6 +294,7 @@ fn split_attributes(
     (derive_attrs, repr_attrs, other_attrs)
 }
 
+/// Processes derive attributes to determine which traits are derived.
 fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, bool, Vec<syn::Path>) {
     let mut has_debug = false;
     let mut has_serialize = false;
@@ -275,6 +321,7 @@ fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, bool,
     (has_debug, has_serialize, has_deserialize, derive_items)
 }
 
+/// Generates Display implementation if Debug is derived.
 fn generate_display_impl(enum_name: &syn::Ident, has_debug: bool) -> TokenStream2 {
     if has_debug {
         quote! {

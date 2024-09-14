@@ -4,6 +4,10 @@ use syn::{parse_quote, punctuated::Punctuated, Variant};
 
 pub(crate) mod r#enum;
 
+/// Determines the representation type for the enum based on attributes and variants.
+///
+/// This function analyzes the `repr` attributes and enum variants to decide on an appropriate
+/// representation type for the enum.
 pub(crate) fn repr_ty(
     repr_attrs: Vec<syn::Attribute>,
     variants: &Punctuated<Variant, syn::token::Comma>,
@@ -19,12 +23,12 @@ pub(crate) fn repr_ty(
     let has_explicit_discriminants = variants.iter().any(|v| v.discriminant.is_some());
 
     if reprs.is_empty() && has_explicit_discriminants {
-        // 如果没有指定 repr 但有显式枚举值，返回默认的 i32
+        // If no repr is specified but there are explicit enum values, return default i32
         return Ok((parse_quote!(i32), quote! { #[repr(i32)] }));
     }
 
     if reprs.is_empty() {
-        // 如果没有指定任何 repr 且没有显式枚举值，返回空的 TokenStream
+        // If no repr is specified and there are no explicit enum values, return an empty TokenStream
         return Ok((parse_quote!(i32), TokenStream2::new()));
     }
 

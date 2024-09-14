@@ -1,35 +1,25 @@
 <img src="../public/ico/white_64x64.ico" alt="e-macros"/>
 
 ### 📄 [中文](README.zh.md)  | 📄  [English](../README.md)
-
+[![Test Status](https://github.com/rust-random/rand/workflows/Tests/badge.svg?event=push)](https://github.com/eternalnight996/e-macros/actions) [![Book](https://img.shields.io/badge/book-master-yellow.svg)](https://doc.rust-lang.org/book/) [![API](https://img.shields.io/badge/api-master-yellow.svg)](https://github.com/eternalnight996/e-macros) [![API](https://docs.rs/e-macros/badge.svg)](https://docs.rs/rand)
 # ⚡ 这是什么?
-**A Rust macros**
+**Rust 宏简化并加速枚举处理：轻松转换、快速索引和无痛序列化**
 
-### 支持 功能
+### 🛠️ 支持功能
 <table style="background:#000">
   <tr>
-    <th><h3 style="color:#fff">APP</h3></th>
+    <th><h3 style="color:#fff">功能</h3></th>
     <th><h3 style="color:#fff">Windows 10</h3></th>
     <th><h3 style="color:#fff">Unix</h3></th>
-    <th><h3 style="color:#fff">Macos</h3></th>
+    <th><h3 style="color:#fff">macOS</h3></th>
+    <th><h3 style="color:#fff">描述</h3></th>
   </tr>
   <tr>
-    <td>Json</td>
-    <td><h4 style="color:green">√</h4></td>
-    <td><h4 style="color:green">√</h4></td>
-    <td><h4 style="color:green">√</h4></td>
-  </tr>
-  <tr>
-    <td>C</td>
-    <td><h4 style="color:green">√</h4></td>
-    <td><h4 style="color:green">√</h4></td>
-    <td><h4 style="color:green">√</h4></td>
-  </tr>
-  <tr>
-    <td>_</td>
-    <td><h4 style="color:red">×</h4></td>
-    <td><h4 style="color:red">×</h4></td>
-    <td><h4 style="color:red">×</h4></td>
+    <td><span style="color:#ccc">Enum</span></td>
+    <td><h4 style="color:green">✓</h4></td>
+    <td><h4 style="color:green">✓</h4></td>
+    <td><h4 style="color:green">✓</h4></td>
+    <td><span style="color:#ccc">高效的枚举操作，包括转换、索引和计数</span></td>
   </tr>
 </table>
 
@@ -40,121 +30,203 @@
 # 📖 示例
 ```toml
 [dependencies]
-e-macros = "0.1"
+e-macros = "0.2"
+```
+#### 🔢 Base Exmaple
+```rust
+#[e_macros::value]
+#[derive(Debug, PartialEq)]
+enum Color {
+    #[e(value = "RED", index = 0)]
+    Red,
+    #[e(value = "GREEN", index = 1)]
+    Green,
+    #[e(value = "BLUE", index = 2)]
+    Blue,
+}
+
+fn main() {
+    let color = Color::Green;
+
+    println!("Color value: {}", color.value());
+    println!("Color index: {}", color.index());
+
+    let from_value = Color::try_from("BLUE").unwrap();
+    println!("From value: {:?}", from_value);
+
+    let from_index = Color::try_from(0).unwrap();
+    println!("From index: {:?}", from_index);
+
+    println!("Variant count: {}", Color::variant_count());
+}
 ```
 
+####  🔢 about serde exmaple
 ```rust
-#[derive(e_macros::C)]
-struct B {
-  d: i32,
-  f: String,
+use e_macros::value;
+use serde::{Serialize, Deserialize};
+
+#[value]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+enum ApiStatus {
+    #[e(value = "OK", index = 200)]
+    Ok,
+    #[e(value = "NOT_FOUND", index = 404)]
+    NotFound(String),
+    #[e(value = "SERVER_ERROR", index = 500)]
+    ServerError { message: String },
 }
-fn test() -> Result<()> {
-  // 假设我们有一个T类型的实例
-  let value: B = B {
-    d: 1,
-    f: "test".to_string(),
-  };
-  let ptr = value.to_c_ptr();
-  // 还原*c_void指针为<Box<T>>实例
-  if let Some(restored_boxed_value) = unsafe { B::from_c_ptr(ptr) } {
-    // 成功还原Box<T>实例
-    println!("Restored value: {:?}", *restored_boxed_value);
-  } else {
-    // 还原过程中出现错误
-    println!("Failed to restore value");
-  }
-  Ok(())
+
+fn main() {
+    let status = ApiStatus::NotFound("Resource not available".to_string());
+
+    // Standard serialization
+    let json = serde_json::to_string(&status).unwrap();
+    println!("Standard serialized: {}", json);
+
+    // Standard deserialization
+    let deserialized: ApiStatus = serde_json::from_str(&json).unwrap();
+    println!("Standard deserialized: {:?}", deserialized);
+
+    // Custom serialization
+    let custom_json = status.to_serde().unwrap();
+    println!("Custom serialized: {}", custom_json);
+
+    // Custom deserialization
+    let custom_deserialized = ApiStatus::from_serde(serde_json::json!({
+        "ServerError": { "message": "Internal server error" }
+    })).unwrap();
+    println!("Custom deserialized: {:?}", custom_deserialized);
 }
 ```
-# 智能写入Json
-# Example
+
+#### 🔢 about debug and display exmaple
 ```rust
-#[derive(serde::Deserialize, Debug, serde::Serialize, Default, e_macros::Json)]
-struct B {
-  d: i32,
-  f: String,
+// Define the LinkedList enum
+#[e_macros::value]
+#[derive(Debug, PartialEq)]
+enum LinkedList {
+    #[e(value = "cons")]
+    Cons(i32, Box<LinkedList>),
+    #[e(value = "nil")]
+    Nil,
 }
-fn test() {
-  let mut b: B = B::default();
-  b.f = "test".to_string();
-  b.auto_write_json(Path::new("."), "test.json").unwrap();
-  let b = B::auto_read_json(Path::new("test.json")).unwrap();
-  println!("B {:?}", b);
+
+fn main() {
+    // Create a linked list instance
+    let list = LinkedList::Cons(
+        1,
+        Box::new(LinkedList::Cons(
+            2,
+            Box::new(LinkedList::Cons(3, Box::new(LinkedList::Nil))),
+        )),
+    );
+    // Print different formats of the linked list
+    println!("LinkedList Debug: {:?}", list);
+    println!("LinkedList Display: {}", list);
+    println!("LinkedList Pretty Debug: {:#?}", list);
 }
 ```
-# 智能读取Json
-# Example
+
+#### 🔢 About repr limit example
 ```rust
-#[derive(serde::Deserialize, Debug, serde::Serialize, Default, e_utils::Json)]
-struct B {
-  d: i32,
-  f: String,
+#[e_macros::value]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[repr(i8)]
+pub enum TestEnumI8 {
+    #[e(index = -128)]
+    One,
+    Two,
+    Three,
+    #[e(index = 126)]
+    N1,
+    N2,
+    N3 = 100
 }
-fn test() {
-  let mut b: B = B::default();
-  b.f = "test".to_string();
-  b.auto_write_json(Path::new("."), "test.json").unwrap();
-  let b = B::auto_read_json(Path::new("test.json")).unwrap();
-  println!("B {:?}", b);
+
+fn main() {
+    // Print the i8 value of each enum variant
+    println!("TestEnumI8::One as i8: {}", TestEnumI8::One as i8);
+    println!("TestEnumI8::Two as i8: {}", TestEnumI8::Two as i8);
+    println!("TestEnumI8::Three as i8: {}", TestEnumI8::Three as i8);
+    println!("TestEnumI8::N1 as i8: {}", TestEnumI8::N1 as i8);
+    println!("TestEnumI8::N2 as i8: {}", TestEnumI8::N2 as i8);
+    println!("TestEnumI8::N3 as i8: {}", TestEnumI8::N3 as i8);
+
+    // Use the index() method to get the index of enum variants
+    println!("\nUsing index() method:");
+    println!("TestEnumI8::One.index(): {}", TestEnumI8::One.index());
+    println!("TestEnumI8::Two.index(): {}", TestEnumI8::Two.index());
+    println!("TestEnumI8::Three.index(): {}", TestEnumI8::Three.index());
+    println!("TestEnumI8::N1.index(): {}", TestEnumI8::N1.index());
+    println!("TestEnumI8::N2.index(): {}", TestEnumI8::N2.index());
+    println!("TestEnumI8::N3.index(): {}", TestEnumI8::N3.index());
 }
 ```
-# 安全地还原*const c_void指针为Box<Self>
-# Example
-```rust
-#[derive(e_utils::C)]
-struct B {
-  d: i32,
-  f: String,
-}
-fn test() -> Result<()> {
-  // 假设我们有一个T类型的实例
-  let value: B = B {
-    d: 1,
-    f: "test".to_string(),
-  };
-  let ptr = value.to_c_ptr();
-  // 还原*c_void指针为<Box<T>>实例
-  if let Some(restored_boxed_value) = unsafe { B::from_c_ptr(ptr) } {
-    // 成功还原Box<T>实例
-    println!("Restored value: {:?}", *restored_boxed_value);
-  } else {
-    // 还原过程中出现错误
-    println!("Failed to restore value");
-  }
-  Ok(())
-}
-```
+
+
 ## `💡!重要：`
-#### xxx
-<!-- 您必须使用使用MSVC工具链的Rust版本
-您必须安装[WinPcap](https://www.winpcap.org/)或[npcap](https://nmap.org/npcap/)（使用[WinPcap](https://www.winpcap.org/) 4.1.3版进行测试）（如果使用[npcap](https://nmap.org/npcap/)，请确保使用“在[WinPcap](https://www.winpcap.org/) API兼容模式下安装[npcap](https://nmap.org/npcap/)”）
-你必须把它放在包里。[WinPcap](https://www.winpcap.org/)开发者包中的lib位于该存储库根目录中名为lib的目录中。或者，您可以使用%LIB%/$Env:LIB环境变量中列出的任何位置。对于64位工具链，它位于WpdPack/Lib/x64/Packet中。对于32位工具链，它位于WpdPack/lib/Packet.lib中。
-```
-# 1.安装npcap服务 https://npcap.com/dist/npcap-1.70.exe
-setx LIB E:\libs\LIB
-# 下载并解压 https://npcap.com/dist/npcap-sdk-1.13.zip
-# 将npcap-sdk-1.13\Lib\x64\Packet.lib放到E:\libs\LIB
-``` -->
 
 # 🚀 快速运行
-<!-- ```sh
-# 主机/端口扫描
-cargo run --example host_scan
-cargo run --example port_scan
-``` -->
+```sh
+#下载对象
+git clone https://github.com/eternalnight996/e-macros
+cd e-macros
+#测试所有对象支持
+cargo test
+#基准测试结果将帮助您了解 e-macros 在不同场景下的性能特征。
+cargo bench
+```
+---
+
+## 📊 性能基准
+
+以下是 `e-macros` 的性能基准结果：
+
+| 方法 | 平均执行时间 |
+|------|--------------|
+| `TestEnum::to_string()` | 179.07 ns |
+| `TestEnum::try_from()` (从字符串) | 3.0561 ns |
+| `TestEnum::index()` | 1.3604 ns |
+| `TestEnum::from()` | 10.437 ns |
+| `TestEnum::value()` | 1.7382 ns |
+| `TestEnum::try_from()` (从值) | 3.0647 ns |
+| `TestEnum::variant_count()` | 217.48 ps |
+
+这些测试结果表明：
+
+- 大多数方法非常快，均在纳秒级完成。
+- `to_string()` 方法相对较慢，这是因为涉及字符串创建。
+- `variant_count()` 是最快的方法，仅需 217.48 皮秒。
+- 其他方法如 `index()`、`value()` 和 `try_from()` 都极为高效，范围在 1 到 3 纳秒之间。
+
+这些结果表明，`e-macros` 生成的枚举方法具有高效性，适用于对性能敏感的场景。
+
+> 注意：这些测试是在特定硬件和环境下进行的。实际性能可能因系统不同而有所变化。
+
+---
+
+## 🦊 已运用项目
+- **项目一**：描述项目一的功能和使用场景。
+- **项目二**：描述项目二的功能和使用场景。
+- **项目三**：描述项目三的功能和使用场景。
+
+## 🔭 为什么需要这个库？
+`e-macros` 旨在简化 Rust 枚举的处理过程，通过宏自动生成常用方法，减少手动编码工作量，提高开发效率。此外，其优化的性能使其成为高性能需求应用的绝佳选择。
+
+---
+
+## 🙋 参考项目与资料
+- [Rust 官方文档](https://www.rust-lang.org/documentation.html)
+- [Serde 文档](https://serde.rs/)
+- [Cargo 用户指南](https://doc.rust-lang.org/cargo/)
+- [e-macros 仓库](https://github.com/eternalnight996/e-macros)
 
 
-# 🦊 已运用项目
-<!-- [E-NetScan](https://github.com/EternalNight996/e-netscan.git): 网络扫描项目（同时支持命令行与跨平台图形化界面）正在开发中。。 -->
+# 📖 License协议
 
-# 🔭 为什么需要e-utils?
-<!-- 起初是想完成一个跨网络扫描项目，帮助自己完成一些工作，参考许多开源项目,但这些项目多少有些缺陷并不满足自己需求，所以有了e-libscanner。
-(处理主机和端口扫描，同时支持域名解析、路由跟踪、指纹扫描、服务扫描、异步扫描、可扩展更多)
-底层是通过调用[npcap](https://nmap.org/npcap/)与[WinPcap](https://www.winpcap.org/)抓包服务；
-服务api为[libpnet](https://github.com/libpnet/libpnet); -->
 
-# 🙋 参考项目与资料
-<!-- ✨[RustScan](https://github.com/RustScan/RustScan) :Rust仿nmap扫描库
-✨[netscan](https://github.com/shellrow/netscan) :Rust 网络扫描库
-✨[libpnet](https://github.com/libpnet/libpnet) 跨平台网络底层库--主要是调用抓包服务([npcap](https://nmap.org/npcap/)与[WinPcap](https://www.winpcap.org/)) -->
+Rand 根据 MIT 许可证 的条款分发。
+
+See [LICENSE-MIT](LICENSE-MIT), and
+[COPYRIGHT](COPYRIGHT) for details.
