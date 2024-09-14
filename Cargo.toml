@@ -20,7 +20,7 @@ harness = false
 
 [package]
 name = "e-macros"
-version = "0.2.0"
+version = "0.2.1"
 description = "Rust macros to simplify and accelerate enum handling: effortless conversion, fast indexing, and painless serialization"
 authors = [
   "Eternal Night <EternalNight996@gmail.com, EternalNightYeah2@yeah.net>",
