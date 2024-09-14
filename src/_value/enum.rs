@@ -13,35 +13,35 @@ pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenSt
     let vis = enum_input.vis;
     let attrs = enum_input.attrs;
     let mut variants = enum_input.variants;
-
+    
     // Split attributes into derive, repr, and other attributes
     let (derive_attrs, repr_attrs, other_attrs) = split_attributes(attrs);
-
+    
     // Process derive attributes to determine which traits are derived
     let (has_debug, has_serialize, has_deserialize, derive_items) =
         process_derive_attrs(derive_attrs);
-
+    
     // Get representation type and new repr attributes
     let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
-
+    
     // Generate implementations for variants
     let variant_drives_impl = variant_drives_impl(&enum_name, &mut variants, &repr_ty);
-
+    
     // Generate Display implementation if Debug is derived
     let display_impl = generate_display_impl(&enum_name, has_debug);
-
+    
     // Generate Serde implementation if Serialize or Deserialize is derived
     let serde_impl = serde_impl(&enum_name, has_serialize, has_deserialize);
-
+    
     // Combine all generated code into final implementation
     Ok(quote! {
+        #[doc(hidden)]
         #(#other_attrs)*
         #new_reprs
         #[derive(#(#derive_items),*)]
         #vis enum #enum_name {
             #variants
         }
-
         #variant_drives_impl
 
         #display_impl
@@ -224,8 +224,7 @@ pub(crate) fn variant_drives_impl(
             /// # Returns the string value of the enum variant.
             /// # Example
             /// ```rust
-            ///
-            /// #[value]
+            /// #[e_macros::value]
             /// #[derive(Debug, PartialEq)]
             /// enum Color {
             ///     #[e(value = "RED", index = 0)]
@@ -237,13 +236,7 @@ pub(crate) fn variant_drives_impl(
             /// }
             /// fn main() {
             ///     let color = Color::Green;
-            ///     println!("Color value: {}", color.value());
-            ///     println!("Color index: {}", color.index());
-            ///     let from_value = Color::try_from("BLUE").unwrap();
-            ///     println!("From value: {:?}", from_value);
-            ///     let from_index = Color::try_from(0).unwrap();
-            ///     println!("From index: {:?}", from_index);
-            ///     println!("Variant count: {}", Color::variant_count());
+            ///     println!("Color value: {:?}", color);
             /// }
             /// ```
             pub fn value(&self) -> &'static str {
@@ -267,13 +260,7 @@ pub(crate) fn variant_drives_impl(
             /// }
             /// fn main() {
             ///     let color = Color::Green;
-            ///     println!("Color value: {}", color.value());
-            ///     println!("Color index: {}", color.index());
-            ///     let from_value = Color::try_from("BLUE").unwrap();
-            ///     println!("From value: {:?}", from_value);
-            ///     let from_index = Color::try_from(0).unwrap();
-            ///     println!("From index: {:?}", from_index);
-            ///     println!("Variant count: {}", Color::variant_count());
+            ///     println!("Color value: {:?}", color);
             /// }
             /// ```
             pub fn index(&self) -> #repr_ty {
@@ -286,7 +273,7 @@ pub(crate) fn variant_drives_impl(
             /// #Returns the number of variants in the enum.
             /// # Example
             /// ```rust
-            ///
+            /// 
             /// #[e_macros::value]
             /// enum Color {
             ///     Red,
