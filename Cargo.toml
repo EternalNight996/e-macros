@@ -2,11 +2,6 @@
 [lib]
 proc-macro = true
 
-[features]
-serde = []
-serde_json = []
-default = []
-
 [dependencies]
 proc-macro2 = "1.0"
 quote = "1.0"
@@ -16,12 +11,12 @@ syn = { version = "2.0", features = ["full", "extra-traits"] }
 trybuild = "1.0"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-e-macros = { path = ".", features = ["serde","serde_json"] }
+e-macros = { path = "." }
 
 
 [package]
 name = "e-macros"
-version = "0.1.6"
+version = "0.2.0"
 description = "This is a macro definition that can handle Json and C data"
 authors = [
   "Eternal Night <EternalNight996@gmail.com, EternalNightYeah2@yeah.net>",

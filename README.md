@@ -41,91 +41,9 @@
 # 📖 Example
 ```toml
 [dependencies]
-e-macros = "0.1"
+e-macros = "0.2"
 ```
 
-```rust
-#[derive(e_macros::C)]
-struct B {
-  d: i32,
-  f: String,
-}
-fn test() -> Result<()> {
-  // 假设我们有一个T类型的实例
-  let value: B = B {
-    d: 1,
-    f: "test".to_string(),
-  };
-  let ptr = value.to_c_ptr();
-  // 还原*c_void指针为<Box<T>>实例
-  if let Some(restored_boxed_value) = unsafe { B::from_c_ptr(ptr) } {
-    // 成功还原Box<T>实例
-    println!("Restored value: {:?}", *restored_boxed_value);
-  } else {
-    // 还原过程中出现错误
-    println!("Failed to restore value");
-  }
-  Ok(())
-}
-```
-# 智能写入Json
-# Example
-```rust
-#[derive(serde::Deserialize, Debug, serde::Serialize, Default, e_macros::Json)]
-struct B {
-  d: i32,
-  f: String,
-}
-fn test() {
-  let mut b: B = B::default();
-  b.f = "test".to_string();
-  b.auto_write_json(Path::new("."), "test.json").unwrap();
-  let b = B::auto_read_json(Path::new("test.json")).unwrap();
-  println!("B {:?}", b);
-}
-```
-# 智能读取Json
-# Example
-```rust
-#[derive(serde::Deserialize, Debug, serde::Serialize, Default, e_utils::Json)]
-struct B {
-  d: i32,
-  f: String,
-}
-fn test() {
-  let mut b: B = B::default();
-  b.f = "test".to_string();
-  b.auto_write_json(Path::new("."), "test.json").unwrap();
-  let b = B::auto_read_json(Path::new("test.json")).unwrap();
-  println!("B {:?}", b);
-}
-```
-# 安全地还原*const c_void指针为Box<Self>
-# Example
-```rust
-#[derive(e_utils::C)]
-struct B {
-  d: i32,
-  f: String,
-}
-fn test() -> Result<()> {
-  // 假设我们有一个T类型的实例
-  let value: B = B {
-    d: 1,
-    f: "test".to_string(),
-  };
-  let ptr = value.to_c_ptr();
-  // 还原*c_void指针为<Box<T>>实例
-  if let Some(restored_boxed_value) = unsafe { B::from_c_ptr(ptr) } {
-    // 成功还原Box<T>实例
-    println!("Restored value: {:?}", *restored_boxed_value);
-  } else {
-    // 还原过程中出现错误
-    println!("Failed to restore value");
-  }
-  Ok(())
-}
-```
 
 ## `💡!important：`
 <!-- ####There are 测试 requirements for building on the windows system environment:

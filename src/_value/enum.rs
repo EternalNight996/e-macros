@@ -2,14 +2,44 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_quote, punctuated::Punctuated};
 
+pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenStream2> {
+    let enum_name = enum_input.ident;
+    let vis = enum_input.vis;
+    let attrs = enum_input.attrs;
+    let mut variants = enum_input.variants;
+    let (derive_attrs, repr_attrs, other_attrs) = split_attributes(attrs);
+    let (has_debug, has_serialize, has_deserialize, derive_items) =
+        process_derive_attrs(derive_attrs);
+    let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
+    let variant_drives_impl = variant_drives_impl(&enum_name, &mut variants, &repr_ty);
+    let display_impl = generate_display_impl(&enum_name, has_debug);
+    let serde_impl = serde_impl(&enum_name, has_serialize, has_deserialize);
+    Ok(quote! {
+        #(#other_attrs)*
+        #new_reprs
+        #[derive(#(#derive_items),*)]
+        #vis enum #enum_name {
+            #variants
+        }
+
+        #variant_drives_impl
+
+        #display_impl
+
+        #serde_impl
+    })
+}
+
 pub(crate) fn variant_drives_impl(
     enum_name: &syn::Ident,
     variants: &mut Punctuated<syn::Variant, syn::token::Comma>,
     repr_ty: &syn::Path,
-) -> syn::ItemImpl {
+) -> TokenStream2 {
     let mut variant_derive_value_expr: Vec<syn::Arm> = Vec::new();
     let mut variant_derive_index_expr: Vec<syn::Arm> = Vec::new();
     let mut variant_derive_from_expr: Vec<syn::Arm> = Vec::new();
+    let mut variant_derive_from_str_expr: Vec<TokenStream2> = Vec::new();
+    let mut last_index: syn::Expr = parse_quote!(0 as #repr_ty);
     for variant in variants.iter_mut() {
         let ident = &variant.ident;
         let mut attrs_to_remove = Vec::new();
@@ -49,6 +79,27 @@ pub(crate) fn variant_drives_impl(
                 variant_derive_value_expr.push(parse_quote! {
                     Self::#ident => #value_expr,
                 });
+                variant_derive_from_str_expr.push(match &variant.fields {
+                    syn::Fields::Unit => quote! {
+                        #value_expr => Ok(Self::#ident),
+                    },
+                    syn::Fields::Named(fields) => {
+                        let field_inits = fields.named.iter().map(|f| {
+                            let name = &f.ident;
+                            quote! { #name: Default::default() }
+                        });
+                        quote! {
+                            #value_expr => Ok(Self::#ident { #(#field_inits),* }),
+                        }
+                    }
+                    syn::Fields::Unnamed(fields) => {
+                        let field_inits =
+                            (0..fields.unnamed.len()).map(|_| quote! { Default::default() });
+                        quote! {
+                            #value_expr => Ok(Self::#ident(#(#field_inits),*)),
+                        }
+                    }
+                });
             }
             syn::Fields::Named(_) => {
                 variant_derive_value_expr.push(parse_quote! {
@@ -62,33 +113,71 @@ pub(crate) fn variant_drives_impl(
             }
         }
 
-        if let Some(idx) = index {
-            variant_derive_from_expr.push(parse_quote! {
-                #idx => Ok(Self::#ident),
-            });
-            match &variant.fields {
-                syn::Fields::Unit => {
-                    variant_derive_index_expr.push(parse_quote! {
-                        Self::#ident => #idx,
-                    });
+        let idx = if let Some(idx) = index {
+            last_index = parse_quote!(#idx);
+            idx
+        } else {
+            last_index = parse_quote! { match (#last_index as #repr_ty).checked_add(1) {
+                Some(next_index) => next_index,
+                None => {
+                    eprintln!("Index overflow: enum {} index exceeds the range of {}", stringify!(#enum_name), stringify!(#repr_ty));
+                    #last_index
                 }
-                syn::Fields::Named(_) => {
-                    variant_derive_index_expr.push(parse_quote! {
-                        Self::#ident { .. } => #idx,
-                    });
-                }
-                syn::Fields::Unnamed(_) => {
-                    variant_derive_index_expr.push(parse_quote! {
-                        Self::#ident(..) => #idx,
-                    });
-                }
+            }};
+            last_index.clone()
+        };
+        match &variant.fields {
+            syn::Fields::Unit => {
+                variant_derive_index_expr.push(parse_quote! {
+                    Self::#ident => #idx,
+                });
+                variant_derive_from_expr.push(parse_quote! {
+                    value if value == #idx => Ok(Self::#ident),
+                });
+            }
+            syn::Fields::Named(_) => {
+                variant_derive_index_expr.push(parse_quote! {
+                    Self::#ident { .. } => #idx,
+                });
+            }
+            syn::Fields::Unnamed(_) => {
+                variant_derive_index_expr.push(parse_quote! {
+                    Self::#ident(..) => #idx,
+                });
             }
         }
     }
 
     let variant_count = variants.len();
+    let from_impl = quote! {
+        impl TryFrom<#repr_ty> for #enum_name {
+            type Error = &'static str;
 
-    parse_quote! {
+            fn try_from(value: #repr_ty) -> Result<Self, Self::Error> {
+                match value {
+                    #(#variant_derive_from_expr)*
+                    _ => Err(concat!("Invalid value ", stringify!(#repr_ty), " for enum \"", stringify!(#enum_name), "\"")),
+                }
+            }
+        }
+    };
+    let from_str_impl = quote! {
+        impl TryFrom<&str> for #enum_name {
+            type Error = &'static str;
+
+            fn try_from(value: &str) -> Result<Self, Self::Error> {
+                match value {
+                    #(#variant_derive_from_str_expr)*
+                    _ => Err(concat!("Invalid string value for enum \"", stringify!(#enum_name), "\"")),
+                }
+            }
+        }
+    };
+    quote! {
+        #from_impl
+
+        #from_str_impl
+
         impl #enum_name {
             pub fn value(&self) -> &'static str {
                 match self {
@@ -101,14 +190,6 @@ pub(crate) fn variant_drives_impl(
                     _ => <#repr_ty>::default(),
                 }
             }
-
-            pub fn from(value: #repr_ty) -> Result<Self, &'static str> {
-                match value {
-                    #(#variant_derive_from_expr)*
-                    _ => Err(concat!("Invalid value ", stringify!(#repr_ty), " for enum \"", stringify!(#enum_name), "\"")),
-                }
-            }
-
             pub fn variant_count() -> usize {
                 #variant_count
             }
@@ -116,32 +197,34 @@ pub(crate) fn variant_drives_impl(
     }
 }
 
-pub(crate) fn create_structure(enum_input: syn::ItemEnum) -> syn::Result<TokenStream2> {
-    let enum_name = &enum_input.ident;
-    let vis = &enum_input.vis;
-    let mut variants = enum_input.variants;
-
-    let (derive_attrs, repr_attrs, other_attrs) = split_attributes(enum_input.attrs);
-    let (has_serialize, has_deserialize, has_debug, derive_items) = process_derive_attrs(derive_attrs);
-    let (repr_ty, new_reprs) = super::repr_ty(repr_attrs, &variants)?;
-
-    let variant_drives_impl = variant_drives_impl(enum_name, &mut variants, &repr_ty);
-    let display_impl = generate_display_impl(enum_name, has_debug);
-
-    Ok(quote! {
-        #(#other_attrs)*
-        #new_reprs
-        #[derive(#(#derive_items),*)]
-        #vis enum #enum_name {
-            #variants
+fn serde_impl(enum_name: &syn::Ident, has_serialize: bool, has_deserialize: bool) -> TokenStream2 {
+    let serialize_impl = if has_serialize {
+        quote! {
+            pub fn to_serde(&self) -> Result<String, serde_json::Error> {
+                serde_json::to_string(&self)
+            }
         }
+    } else {
+        quote! {}
+    };
 
-        #variant_drives_impl
+    let deserialize_impl = if has_deserialize {
+        quote! {
+            pub fn from_serde(value: serde_json::Value) -> Result<Self, serde_json::Error> {
+                serde_json::from_value(value)
+            }
+        }
+    } else {
+        quote! {}
+    };
 
-        #display_impl
-    })
+    quote! {
+        impl #enum_name {
+            #serialize_impl
+            #deserialize_impl
+        }
+    }
 }
-
 fn split_attributes(
     attrs: Vec<syn::Attribute>,
 ) -> (
@@ -149,49 +232,47 @@ fn split_attributes(
     Vec<syn::Attribute>,
     Vec<syn::Attribute>,
 ) {
-    let (derive_and_repr_attrs, other_attrs): (Vec<_>, Vec<_>) = attrs
-        .into_iter()
-        .partition(|attr| attr.path().is_ident("derive") || attr.path().is_ident("repr"));
+    let mut derive_attrs = Vec::new();
+    let mut repr_attrs = Vec::new();
+    let mut other_attrs = Vec::new();
 
-    let (derive_attrs, repr_attrs): (Vec<_>, Vec<_>) = derive_and_repr_attrs
-        .into_iter()
-        .partition(|attr| attr.path().is_ident("derive"));
+    for attr in attrs {
+        if attr.path().is_ident("derive") {
+            derive_attrs.push(attr);
+        } else if attr.path().is_ident("repr") {
+            repr_attrs.push(attr);
+        } else {
+            other_attrs.push(attr);
+        }
+    }
 
     (derive_attrs, repr_attrs, other_attrs)
 }
 
 fn process_derive_attrs(derive_attrs: Vec<syn::Attribute>) -> (bool, bool, bool, Vec<syn::Path>) {
-    println!("Processing derive attributes: {:?}", derive_attrs);
-    
+    let mut has_debug = false;
     let mut has_serialize = false;
     let mut has_deserialize = false;
-    let mut has_debug = false;
     let mut derive_items = Vec::new();
 
     for attr in derive_attrs {
-        if attr.path().is_ident("derive") {
-            if let Ok(list) = attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated) {
-                for item in list {
-                    let last_segment = item.segments.last().map(|s| s.ident.to_string());
-                    println!("Checking derive item: {:?}", last_segment);
-                    
-                    match last_segment.as_deref() {
-                        Some("Serialize") => has_serialize = true,
-                        Some("Deserialize") => has_deserialize = true,
-                        Some("Debug") => has_debug = true,
-                        _ => {}
-                    }
-                    
-                    derive_items.push(item);
+        if let Ok(nested) = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+        ) {
+            for path in nested {
+                if path.is_ident("Debug") {
+                    has_debug = true;
+                } else if path.is_ident("Serialize") {
+                    has_serialize = true;
+                } else if path.is_ident("Deserialize") {
+                    has_deserialize = true;
                 }
+                derive_items.push(path);
             }
         }
     }
 
-    println!("Has Serialize: {}, Has Deserialize: {}, Has Debug: {}", has_serialize, has_deserialize, has_debug);
-    println!("Derive items: {:?}", derive_items);
-
-    (has_serialize, has_deserialize, has_debug, derive_items)
+    (has_debug, has_serialize, has_deserialize, derive_items)
 }
 
 fn generate_display_impl(enum_name: &syn::Ident, has_debug: bool) -> TokenStream2 {
