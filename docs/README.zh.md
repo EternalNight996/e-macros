@@ -166,6 +166,8 @@ fn main() {
 
 
 ## `💡!重要：`
+```text
+```
 
 # 🚀 快速运行
 ```sh
@@ -228,5 +230,5 @@ cargo bench
 
 Rand 根据 MIT 许可证 的条款分发。
 
-See [LICENSE-MIT](LICENSE-MIT), and
-[COPYRIGHT](COPYRIGHT) for details.
+See [LICENSE-MIT](../LICENSE-MIT), and
+[COPYRIGHT](../COPYRIGHT) for details.
