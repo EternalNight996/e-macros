@@ -221,17 +221,82 @@ pub(crate) fn variant_drives_impl(
         #from_str_impl
 
         impl #enum_name {
+            /// # Returns the string value of the enum variant.
+            /// # Example
+            /// ```rust
+            /// 
+            /// #[value]
+            /// #[derive(Debug, PartialEq)]
+            /// enum Color {
+            ///     #[e(value = "RED", index = 0)]
+            ///     Red,
+            ///     #[e(value = "GREEN", index = 1)]
+            ///     Green,
+            ///     #[e(value = "BLUE", index = 2)]
+            ///     Blue,
+            /// }
+            /// fn main() {
+            ///     let color = Color::Green;
+            ///     println!("Color value: {}", color.value());
+            ///     println!("Color index: {}", color.index());
+            ///     let from_value = Color::try_from("BLUE").unwrap();
+            ///     println!("From value: {:?}", from_value);
+            ///     let from_index = Color::try_from(0).unwrap();
+            ///     println!("From index: {:?}", from_index);
+            ///     println!("Variant count: {}", Color::variant_count());
+            /// }
+            /// ```
             pub fn value(&self) -> &'static str {
                 match self {
                     #(#variant_derive_value_expr)*
                 }
             }
+
+            /// #Returns the index value of the enum variant.
+            /// # Example
+            /// ```rust
+            /// #[e_macros::value]
+            /// #[derive(Debug, PartialEq)]
+            /// enum Color {
+            ///     #[e(value = "RED", index = 0)]
+            ///     Red,
+            ///     #[e(value = "GREEN", index = 1)]
+            ///     Green,
+            ///     #[e(value = "BLUE", index = 2)]
+            ///     Blue,
+            /// }
+            /// fn main() {
+            ///     let color = Color::Green;
+            ///     println!("Color value: {}", color.value());
+            ///     println!("Color index: {}", color.index());
+            ///     let from_value = Color::try_from("BLUE").unwrap();
+            ///     println!("From value: {:?}", from_value);
+            ///     let from_index = Color::try_from(0).unwrap();
+            ///     println!("From index: {:?}", from_index);
+            ///     println!("Variant count: {}", Color::variant_count());
+            /// }
+            /// ```
             pub fn index(&self) -> #repr_ty {
                 match self {
                     #(#variant_derive_index_expr)*
                     _ => <#repr_ty>::default(),
                 }
             }
+
+            /// #Returns the number of variants in the enum.
+            /// # Example
+            /// ```rust
+            /// 
+            /// #[e_macros::value]
+            /// enum Color {
+            ///     Red,
+            ///     Green,
+            ///     Blue,
+            /// }
+            /// fn main() {
+            ///     println!("Cariant len: {}", Color::variant_count());
+            /// }
+            /// ```
             pub fn variant_count() -> usize {
                 #variant_count
             }
