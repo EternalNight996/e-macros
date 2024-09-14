@@ -44,79 +44,29 @@ use syn::parse_macro_input;
 /// - **Numeric Indexing**: Allows efficient mapping between enum variants and numeric values.
 ///
 /// # Example: API Status with Serde Support
-///
 /// ```rust
-/// #[e_macros::value]
-/// #[derive(Debug, PartialEq, Serialize, Deserialize)]
-/// enum ApiStatus {
-///     #[e(value = "OK", index = 200)]
-///     Ok,
-///     #[e(value = "NOT_FOUND", index = 404)]
-///     NotFound(String),
-///     #[e(value = "SERVER_ERROR", index = 500)]
-///     ServerError { message: String },
-/// }
-///
-/// // Usage:
-/// let status = ApiStatus::NotFound("Resource not available".to_string());
-///
-/// // Debug output
-/// println!("{:?}", status);
-/// // Output: NotFound("Resource not available")
-///
-/// // Display output
-/// println!("{}", status);
-/// // Output: NOT_FOUND
-///
-/// // Serde serialization
-/// let json = status.to_serde().unwrap();
-/// println!("Serialized: {}", json);
-/// // Output: Serialized: {"NotFound":"Resource not available"}
-///
-/// // Serde deserialization
-/// let deserialized: ApiStatus = ApiStatus::from_serde(serde_json::json!({
-///     "ServerError": { "message": "Internal server error" }
-/// })).unwrap();
-/// assert!(matches!(deserialized, ApiStatus::ServerError { .. }));
-/// ```
-///
-/// # Example: Configuration Enum with Debug
-///
-/// ```rust
-/// #[e_macros::value]
+/// use e_macros::value;
+/// #[value]
 /// #[derive(Debug, PartialEq)]
-/// enum Config {
-///     #[e(value = "database")]
-///     Database { url: String, port: u16 },
-///     #[e(value = "api")]
-///     Api { endpoint: String },
-///     #[e(value = "logging")]
-///     Logging(LogLevel),
+/// enum Color {
+///     #[e(value = "RED", index = 0)]
+///     Red,
+///     #[e(value = "GREEN", index = 1)]
+///     Green,
+///     #[e(value = "BLUE", index = 2)]
+///     Blue,
 /// }
-///
-/// #[e_macros::value]
-/// #[derive(Debug, PartialEq)]
-/// enum LogLevel {
-///     #[e(value = "debug")]
-///     Debug,
-///     #[e(value = "info")]
-///     Info,
+/// fn main() {
+///     let color = Color::Green;
+///     println!("Color value: {}", color.value());
+///     println!("Color index: {}", color.index());
+///     let from_value = Color::try_from("BLUE").unwrap();
+///     println!("From value: {:?}", from_value);
+///     let from_index = Color::try_from(0).unwrap();
+///     println!("From index: {:?}", from_index);
+///     println!("Variant count: {}", Color::variant_count());
 /// }
-///
-/// let config = Config::Database {
-///     url: "localhost".to_string(),
-///     port: 5432,
-/// };
-///
-/// // Detailed debug output
-/// println!("{:?}", config);
-/// // Output: Database { url: "localhost", port: 5432 }
-///
-/// // Simple display output
-/// println!("{}", config);
-/// // Output: database
 /// ```
-///
 /// # Notes
 ///
 /// - String conversion is case-sensitive for precise matching
